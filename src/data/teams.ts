@@ -1,0 +1,25 @@
+import type { Team } from '@/types/domain';
+
+export const TEAMS: Record<string, Team> = {
+  ARS: { name: 'Arsenal', short: 'ARS', color: '#EF0107', city: 'London' },
+  CHE: { name: 'Chelsea', short: 'CHE', color: '#034694', city: 'London' },
+  LIV: { name: 'Liverpool', short: 'LIV', color: '#C8102E', city: 'Liverpool' },
+  MCI: { name: 'Man City', short: 'MCI', color: '#6CABDD', city: 'Manchester' },
+  MUN: { name: 'Man United', short: 'MUN', color: '#DA291C', city: 'Manchester' },
+  TOT: { name: 'Tottenham', short: 'TOT', color: '#132257', city: 'London' },
+  NEW: { name: 'Newcastle', short: 'NEW', color: '#241F20', city: 'Newcastle' },
+  AVL: { name: 'Aston Villa', short: 'AVL', color: '#95BFE5', city: 'Birmingham' },
+  RMA: { name: 'Real Madrid', short: 'RMA', color: '#FEBE10', city: 'Madrid' },
+  BAR: { name: 'Barcelona', short: 'BAR', color: '#A50044', city: 'Barcelona' },
+  ATM: { name: 'Atlético', short: 'ATM', color: '#CB3524', city: 'Madrid' },
+  SEV: { name: 'Sevilla', short: 'SEV', color: '#D60026', city: 'Sevilla' },
+  JUV: { name: 'Juventus', short: 'JUV', color: '#000000', city: 'Turin' },
+  INT: { name: 'Inter', short: 'INT', color: '#0068A8', city: 'Milan' },
+  MIL: { name: 'AC Milan', short: 'MIL', color: '#FB090B', city: 'Milan' },
+  NAP: { name: 'Napoli', short: 'NAP', color: '#12A0D7', city: 'Naples' },
+  BAY: { name: 'Bayern', short: 'BAY', color: '#DC052D', city: 'Munich' },
+  BVB: { name: 'Dortmund', short: 'BVB', color: '#FDE100', city: 'Dortmund' },
+  RBL: { name: 'RB Leipzig', short: 'RBL', color: '#DD0741', city: 'Leipzig' },
+  PSG: { name: 'PSG', short: 'PSG', color: '#004170', city: 'Paris' },
+  MAR: { name: 'Marseille', short: 'MAR', color: '#2FAEE0', city: 'Marseille' },
+};

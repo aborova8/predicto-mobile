@@ -1,0 +1,15 @@
+import { fixtureMap } from '@/data/fixtures';
+import type { Leg } from '@/types/domain';
+
+export const fmtOdds = (n: number) => n.toFixed(2);
+
+export function calculateTotalOdds(legs: Leg[]): number {
+  return legs.reduce((acc, l) => {
+    const f = fixtureMap[l.matchId];
+    return acc * (f ? f.odds[l.pick] : 1);
+  }, 1);
+}
+
+export function multiplyOdds(odds: number[]): number {
+  return odds.reduce((acc, n) => acc * n, 1);
+}

@@ -1,0 +1,82 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Predicto Mobile · .gitignore
+# Expo (SDK 55) + React Native + TypeScript
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# ── Expo ──────────────────────────────────────────────────────────────────────
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# Generated native projects (we use CNG / prebuild on demand — keep them out of git)
+/ios
+/android
+
+# ── Metro / React Native ──────────────────────────────────────────────────────
+.metro-health-check*
+.metro-cache/
+
+# ── Builds & native artifacts ─────────────────────────────────────────────────
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+*.apk
+*.aab
+*.ipa
+
+# ── EAS (Expo Application Services) ───────────────────────────────────────────
+# Local EAS state; eas.json itself should be committed.
+.easignore
+.eas/
+
+# ── Environment variables ─────────────────────────────────────────────────────
+# NEVER commit real secrets. Only commit `.env.example`.
+.env
+.env.*
+!.env.example
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+pnpm-debug.*
+*.log
+logs/
+
+# ── TypeScript / build cache ──────────────────────────────────────────────────
+*.tsbuildinfo
+.turbo/
+.cache/
+
+# ── Testing & coverage ────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ── IDE & editor ──────────────────────────────────────────────────────────────
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# ── OS junk ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+*.tgz
+.vercel

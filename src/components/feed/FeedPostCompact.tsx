@@ -1,0 +1,139 @@
+import { memo } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { Avatar } from '@/components/atoms/Avatar';
+import { Icon } from '@/components/atoms/Icon';
+import { Ticket } from '@/components/ticket/Ticket';
+import { USERS } from '@/data/users';
+import { Fonts } from '@/theme/fonts';
+import { useTheme } from '@/theme/ThemeContext';
+import type { Post } from '@/types/domain';
+
+interface FeedPostCompactProps {
+  post: Post;
+  onLike: (id: string) => void;
+  onComment: (id: string) => void;
+  onShare: (id: string) => void;
+  onTicketPress: (id: string) => void;
+  onOpenUser: (userId: string) => void;
+}
+
+function FeedPostCompactImpl({
+  post,
+  onLike,
+  onComment,
+  onShare,
+  onTicketPress,
+  onOpenUser,
+}: FeedPostCompactProps) {
+  const theme = useTheme();
+  const u = USERS[post.userId];
+  if (!u) return null;
+
+  return (
+    <View style={[styles.wrap, { borderBottomColor: theme.lineSoft }]}>
+      <Pressable onPress={() => onOpenUser(u.id)}>
+        <Avatar user={u} size={34} />
+      </Pressable>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={styles.head}>
+          <Pressable onPress={() => onOpenUser(u.id)}>
+            <Text style={[styles.name, { color: theme.text }]}>{u.name}</Text>
+          </Pressable>
+          <Pressable onPress={() => onOpenUser(u.id)}>
+            <Text style={[styles.handle, { color: theme.text3 }]}>@{u.handle}</Text>
+          </Pressable>
+          <Text style={{ color: theme.text3, fontSize: 11 }}>·</Text>
+          <Text style={[styles.handle, { color: theme.text3 }]}>{post.timeAgo}</Text>
+          <View style={{ flex: 1 }} />
+          {u.streak >= 5 ? (
+            <View style={styles.streak}>
+              <Icon name="flame" size={10} stroke={2.2} color={theme.neon} />
+              <Text style={[styles.streakTxt, { color: theme.neon }]}>{u.streak}</Text>
+            </View>
+          ) : null}
+        </View>
+        {post.caption ? (
+          <Text style={[styles.caption, { color: theme.text }]}>{post.caption}</Text>
+        ) : null}
+        <Ticket ticket={post.ticket} onPress={() => onTicketPress(post.ticket.id)} />
+        <View style={styles.actions}>
+          <Pressable style={styles.action} onPress={() => onComment(post.id)}>
+            <Icon name="comment" size={16} color={theme.text3} />
+            <Text style={[styles.actionTxt, { color: theme.text3 }]}>{post.comments}</Text>
+          </Pressable>
+          <Pressable style={styles.action} onPress={() => onLike(post.id)}>
+            <Icon
+              name="heart"
+              size={16}
+              color={post.liked ? theme.neon : theme.text3}
+              stroke={post.liked ? 2.2 : 1.7}
+            />
+            <Text style={[styles.actionTxt, { color: post.liked ? theme.neon : theme.text3 }]}>
+              {post.likes}
+            </Text>
+          </Pressable>
+          <Pressable style={styles.action} onPress={() => onShare(post.id)}>
+            <Icon name="share" size={16} color={theme.text3} />
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  head: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 5,
+    marginBottom: 4,
+  },
+  name: {
+    fontFamily: Fonts.dispBold,
+    fontSize: 13,
+  },
+  handle: {
+    fontFamily: Fonts.monoRegular,
+    fontSize: 11,
+  },
+  streak: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  streakTxt: {
+    fontFamily: Fonts.monoBold,
+    fontSize: 10,
+  },
+  caption: {
+    fontFamily: Fonts.uiRegular,
+    fontSize: 13.5,
+    lineHeight: 19,
+    marginBottom: 9,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 22,
+    marginTop: 9,
+  },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  actionTxt: {
+    fontFamily: Fonts.monoSemi,
+    fontSize: 12,
+  },
+});
+
+export const FeedPostCompact = memo(FeedPostCompactImpl);
