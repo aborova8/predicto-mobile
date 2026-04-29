@@ -39,7 +39,7 @@ export default function ProfileScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { setAuthed } = useAppState();
+  const { signOut } = useAppState();
   const [filter, setFilter] = useState<TicketStatus | 'all'>('all');
 
   const u = USERS.u1;
@@ -66,7 +66,7 @@ export default function ProfileScreen() {
             <Icon name="settings" size={18} color={theme.text2} />
           </Pressable>
           <Pressable
-            onPress={() => setAuthed(false)}
+            onPress={() => { void signOut(); }}
             style={[styles.iconBtn, { backgroundColor: theme.surface, borderColor: theme.line }]}
           >
             <Icon name="logout" size={18} color={theme.text2} />

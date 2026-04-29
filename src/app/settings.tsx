@@ -14,7 +14,7 @@ export default function SettingsScreen() {
   const { name: themeName, setName: setThemeName } = useThemeCtx();
   const router = useRouter();
   const {
-    setAuthed,
+    signOut,
     ticketVariant,
     setTicketVariant,
     feedLayout,
@@ -99,8 +99,8 @@ export default function SettingsScreen() {
         <View style={{ paddingHorizontal: 16, paddingTop: 6 }}>
           <Pressable
             onPress={() => {
-              setAuthed(false);
-              router.replace('/(auth)/sign-in');
+              void signOut();
+              // Auth gate auto-routes to sign-in once token clears.
             }}
             style={[styles.signOut, { backgroundColor: theme.surface, borderColor: theme.line }]}
           >

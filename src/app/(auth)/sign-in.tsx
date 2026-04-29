@@ -1,6 +1,8 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,6 +17,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '@/components/atoms/Icon';
 import { Logo } from '@/components/atoms/Logo';
 import { NeonButton } from '@/components/atoms/NeonButton';
+import { errorMessage } from '@/lib/api';
+import * as appleAuth from '@/lib/auth/apple';
+import { useGoogleAuth } from '@/lib/auth/google';
 import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
@@ -23,11 +28,79 @@ export default function SignInScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { setAuthed } = useAppState();
-  const [email, setEmail] = useState('marco@predicto.app');
-  const [password, setPassword] = useState('••••••••');
+  const { signIn, signInWithGoogle, signInWithApple } = useAppState();
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [appleAvailable, setAppleAvailable] = useState(false);
 
-  const onSignIn = () => setAuthed(true);
+  useEffect(() => {
+    void appleAuth.isAvailable().then(setAppleAvailable);
+  }, []);
+
+  const onSubmit = async () => {
+    if (submitting) return;
+    setError(null);
+    if (!identifier.trim() || !password) {
+      setError('Email/username and password are required.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await signIn(identifier.trim(), password);
+    } catch (err) {
+      setError(errorMessage(err, 'Sign in failed. Try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const google = useGoogleAuth({
+    onIdToken: async (idToken) => {
+      setError(null);
+      setSubmitting(true);
+      try {
+        await signInWithGoogle(idToken);
+      } catch (err) {
+        setError(errorMessage(err, 'Google sign-in failed.'));
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    onError: (err) => setError(errorMessage(err, 'Google sign-in failed.')),
+  });
+
+  const onApple = async () => {
+    if (submitting) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const credential = await appleAuth.signIn();
+      await signInWithApple({
+        identityToken: credential.identityToken,
+        fullName: credential.fullName,
+      });
+    } catch (err: unknown) {
+      const code = err && typeof err === 'object' ? (err as { code?: string }).code : undefined;
+      if (code !== 'ERR_REQUEST_CANCELED') {
+        setError(errorMessage(err, 'Apple sign-in failed.'));
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onGoogle = async () => {
+    if (submitting || !google.ready) {
+      if (!google.ready) {
+        Alert.alert('Google sign-in unavailable', 'Add EXPO_PUBLIC_GOOGLE_*_CLIENT_ID values and restart the dev server.');
+      }
+      return;
+    }
+    setError(null);
+    await google.promptAsync();
+  };
 
   return (
     <KeyboardAvoidingView
@@ -51,23 +124,35 @@ export default function SignInScreen() {
 
         <View style={{ gap: 10 }}>
           <TextInput
-            value={email}
-            onChangeText={setEmail}
+            value={identifier}
+            onChangeText={(v) => {
+              setIdentifier(v);
+              if (error) setError(null);
+            }}
             placeholder="Email or username"
             placeholderTextColor={theme.text3}
             autoCapitalize="none"
-            autoComplete="email"
+            autoComplete="username"
             keyboardType="email-address"
+            editable={!submitting}
             style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.line, color: theme.text }]}
           />
           <TextInput
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(v) => {
+              setPassword(v);
+              if (error) setError(null);
+            }}
             placeholder="Password"
             placeholderTextColor={theme.text3}
             secureTextEntry
+            autoComplete="current-password"
+            editable={!submitting}
             style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.line, color: theme.text }]}
           />
+          {error ? (
+            <Text style={[styles.errorTxt, { color: theme.loss }]}>{error.toUpperCase()}</Text>
+          ) : null}
           <View style={{ alignItems: 'flex-end' }}>
             <Pressable onPress={() => router.push('/(auth)/forgot-password')}>
               <Text style={[styles.linkSmall, { color: theme.text2 }]}>Forgot password?</Text>
@@ -76,7 +161,9 @@ export default function SignInScreen() {
         </View>
 
         <View style={{ marginTop: 18 }}>
-          <NeonButton onPress={onSignIn}>Sign in →</NeonButton>
+          <NeonButton onPress={onSubmit} disabled={submitting}>
+            {submitting ? 'Signing in…' : 'Sign in →'}
+          </NeonButton>
         </View>
 
         <View style={styles.dividerWrap}>
@@ -86,18 +173,22 @@ export default function SignInScreen() {
         </View>
 
         <View style={{ gap: 10 }}>
+          {appleAvailable ? (
+            <Pressable
+              onPress={onApple}
+              disabled={submitting}
+              style={[styles.oauthBtn, { backgroundColor: theme.surface, borderColor: theme.line, opacity: submitting ? 0.5 : 1 }]}
+            >
+              <Icon name="apple" size={18} color={theme.text} />
+              <Text style={[styles.oauthTxt, { color: theme.text }]}>Continue with Apple</Text>
+            </Pressable>
+          ) : null}
           <Pressable
-            onPress={onSignIn}
-            style={[styles.oauthBtn, { backgroundColor: theme.surface, borderColor: theme.line }]}
+            onPress={onGoogle}
+            disabled={submitting}
+            style={[styles.oauthBtn, { backgroundColor: theme.surface, borderColor: theme.line, opacity: submitting ? 0.5 : 1 }]}
           >
-            <Icon name="apple" size={18} color={theme.text} />
-            <Text style={[styles.oauthTxt, { color: theme.text }]}>Continue with Apple</Text>
-          </Pressable>
-          <Pressable
-            onPress={onSignIn}
-            style={[styles.oauthBtn, { backgroundColor: theme.surface, borderColor: theme.line }]}
-          >
-            <Icon name="google" size={18} />
+            {submitting ? <ActivityIndicator size="small" color={theme.text2} /> : <Icon name="google" size={18} />}
             <Text style={[styles.oauthTxt, { color: theme.text }]}>Continue with Google</Text>
           </Pressable>
         </View>
@@ -153,6 +244,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontFamily: Fonts.uiRegular,
     fontSize: 14,
+  },
+  errorTxt: {
+    fontFamily: Fonts.monoMedium,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    marginTop: 2,
   },
   linkSmall: {
     fontFamily: Fonts.monoMedium,

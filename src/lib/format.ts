@@ -13,3 +13,7 @@ export function calculateTotalOdds(legs: Leg[]): number {
 export function multiplyOdds(odds: number[]): number {
   return odds.reduce((acc, n) => acc * n, 1);
 }
+
+export function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}

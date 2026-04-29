@@ -31,18 +31,19 @@ import { ThemeProvider, useTheme, useThemeCtx } from '@/theme/ThemeContext';
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function AuthGate() {
-  const { authed } = useAppState();
+  const { authed, authLoading } = useAppState();
   const segments = useSegments();
   const router = useRouter();
   const inAuthGroup = segments[0] === '(auth)';
 
   useEffect(() => {
+    if (authLoading) return;
     if (!authed && !inAuthGroup) {
       router.replace('/(auth)/sign-in');
     } else if (authed && inAuthGroup) {
       router.replace('/(tabs)');
     }
-  }, [authed, inAuthGroup, router]);
+  }, [authed, authLoading, inAuthGroup, router]);
 
   return null;
 }
@@ -71,6 +72,7 @@ function RootStack() {
         <Stack.Screen name="friends" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="settings" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="legal" options={{ presentation: 'card', animation: 'slide_from_right' }} />
+        <Stack.Screen name="verify-email" options={{ presentation: 'card', animation: 'fade' }} />
         <Stack.Screen name="comments" options={{ presentation: 'transparentModal', animation: 'fade' }} />
         <Stack.Screen name="review" options={{ presentation: 'transparentModal', animation: 'fade' }} />
         <Stack.Screen name="paywall" options={{ presentation: 'transparentModal', animation: 'fade' }} />
@@ -80,11 +82,20 @@ function RootStack() {
   );
 }
 
+function SplashGate() {
+  const { authLoading } = useAppState();
+  useEffect(() => {
+    if (!authLoading) SplashScreen.hideAsync().catch(() => {});
+  }, [authLoading]);
+  return null;
+}
+
 function ThemedShell() {
   const { name } = useThemeCtx();
   return (
     <>
       <StatusBar style={name === 'light' ? 'dark' : 'light'} />
+      <SplashGate />
       <RootStack />
     </>
   );
@@ -106,10 +117,6 @@ export default function RootLayout() {
     JetBrainsMono_700Bold,
     JetBrainsMono_800ExtraBold,
   });
-
-  useEffect(() => {
-    if (loaded) SplashScreen.hideAsync().catch(() => {});
-  }, [loaded]);
 
   if (!loaded) return null;
 

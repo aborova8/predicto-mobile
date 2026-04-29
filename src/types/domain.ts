@@ -45,6 +45,24 @@ export interface User {
   hitRate: number;
 }
 
+// The authenticated user as returned by /api/auth/* endpoints. Distinct from
+// the social-graph `User` shape above (which carries feed-specific stats);
+// both refer to a person but the backend only owns the auth fields.
+export type AuthRole = 'USER' | 'ADMIN';
+export type AuthProvider = 'LOCAL' | 'GOOGLE' | 'APPLE';
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  email: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  role: AuthRole;
+  points: number;
+  livesBalance: number;
+  createdAt: string;
+}
+
 export interface Leg {
   matchId: string;
   pick: Pick;

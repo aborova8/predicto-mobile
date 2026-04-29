@@ -5,21 +5,38 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from 'react';
 
 import { POSTS } from '@/data/posts';
 import { calculateTotalOdds } from '@/lib/format';
-import type { FeedLayout, Pick, Post, TicketVariant } from '@/types/domain';
+import { configureApi } from '@/lib/api';
+import * as authApi from '@/lib/auth/api';
+import * as authStorage from '@/lib/auth/storage';
+import type { AuthUser, FeedLayout, Pick, Post, TicketVariant } from '@/types/domain';
 
 type Picks = Record<string, Pick | null>;
 type FeedFilter = 'global' | 'friends';
 
 interface AppStateCtx {
+  // ── Auth ────────────────────────────────────────────────────────────────
   authed: boolean;
-  setAuthed: (v: boolean) => void;
+  authLoading: boolean;
+  user: AuthUser | null;
+  token: string | null;
+  signIn: (identifier: string, password: string) => Promise<void>;
+  signUp: (input: authApi.SignUpInput) => Promise<void>;
+  signInWithGoogle: (idToken: string, username?: string) => Promise<void>;
+  signInWithApple: (payload: authApi.AppleSignInPayload) => Promise<void>;
+  signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  verifyPasswordResetCode: (email: string, code: string) => Promise<void>;
+  confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<void>;
 
+  // ── Feed / picks / ticket prefs (unchanged) ────────────────────────────
   posts: Post[];
   setPosts: (p: Post[]) => void;
   likePost: (postId: string) => void;
@@ -50,8 +67,32 @@ const AppStateContext = createContext<AppStateCtx | null>(null);
 const TICKET_VARIANT_KEY = 'predicto.ticketVariant';
 const FEED_LAYOUT_KEY = 'predicto.feedLayout';
 
+function sameAuthUser(a: AuthUser | null, b: AuthUser | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.username === b.username &&
+    a.email === b.email &&
+    a.avatarUrl === b.avatarUrl &&
+    a.bio === b.bio &&
+    a.role === b.role &&
+    a.points === b.points &&
+    a.livesBalance === b.livesBalance &&
+    a.createdAt === b.createdAt
+  );
+}
+
 export function AppStateProvider({ children }: PropsWithChildren) {
-  const [authed, setAuthed] = useState(false);
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  // Mirror token in a ref so the api `getToken` callback always sees the
+  // latest value without re-running configureApi on every change.
+  const tokenRef = useRef<string | null>(null);
+
+  // ── Feed / picks (unchanged) ──────────────────────────────────────────────
   const [posts, setPosts] = useState<Post[]>(POSTS);
   const [picks, setPicks] = useState<Picks>({});
   const [ticketsLeft, setTicketsLeft] = useState(1);
@@ -59,15 +100,73 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [ticketVariant, setTicketVariantState] = useState<TicketVariant>('slip');
   const [feedLayout, setFeedLayoutState] = useState<FeedLayout>('card');
 
-  useEffect(() => {
-    AsyncStorage.multiGet([TICKET_VARIANT_KEY, FEED_LAYOUT_KEY]).then((entries) => {
-      const map = Object.fromEntries(entries);
-      const tv = map[TICKET_VARIANT_KEY];
-      const fl = map[FEED_LAYOUT_KEY];
-      if (tv === 'slip' || tv === 'card') setTicketVariantState(tv);
-      if (fl === 'card' || fl === 'compact') setFeedLayoutState(fl);
-    });
+  const applySession = useCallback((next: { token: string; user: AuthUser } | null) => {
+    if (next) {
+      tokenRef.current = next.token;
+      setToken(next.token);
+      setUser(next.user);
+    } else {
+      tokenRef.current = null;
+      setToken(null);
+      setUser(null);
+    }
   }, []);
+
+  const signOut = useCallback(async () => {
+    // Best-effort remote call; never block local logout on the network.
+    try {
+      if (tokenRef.current) await authApi.signOutRemote();
+    } catch {}
+    await authStorage.clearSession();
+    applySession(null);
+  }, [applySession]);
+
+  useEffect(() => {
+    configureApi({
+      getToken: () => tokenRef.current,
+      onUnauthorized: () => {
+        // Defer a tick so the in-flight request can throw before we clear.
+        setTimeout(() => {
+          void signOut();
+        }, 0);
+      },
+    });
+  }, [signOut]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [persisted, prefs] = await Promise.all([
+          authStorage.getSession(),
+          AsyncStorage.multiGet([TICKET_VARIANT_KEY, FEED_LAYOUT_KEY]),
+        ]);
+        if (cancelled) return;
+        const map = Object.fromEntries(prefs);
+        const tv = map[TICKET_VARIANT_KEY];
+        const fl = map[FEED_LAYOUT_KEY];
+        if (tv === 'slip' || tv === 'card') setTicketVariantState(tv);
+        if (fl === 'card' || fl === 'compact') setFeedLayoutState(fl);
+        if (persisted) {
+          applySession(persisted);
+          void authApi.getMe().then(
+            (fresh) => {
+              if (cancelled) return;
+              if (sameAuthUser(persisted.user, fresh)) return;
+              setUser(fresh);
+              void authStorage.updateCachedUser(fresh);
+            },
+            () => {},
+          );
+        }
+      } finally {
+        if (!cancelled) setAuthLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applySession]);
 
   const setTicketVariant = useCallback((v: TicketVariant) => {
     setTicketVariantState(v);
@@ -78,6 +177,67 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     setFeedLayoutState(v);
     AsyncStorage.setItem(FEED_LAYOUT_KEY, v).catch(() => {});
   }, []);
+
+  const persistAndApply = useCallback(
+    async (response: authApi.AuthResponse) => {
+      await authStorage.setSession(response);
+      applySession(response);
+    },
+    [applySession],
+  );
+
+  const signIn = useCallback(
+    async (identifier: string, password: string) => {
+      const res = await authApi.signIn(identifier, password);
+      await persistAndApply(res);
+    },
+    [persistAndApply],
+  );
+
+  const signUp = useCallback(
+    async (input: authApi.SignUpInput) => {
+      const res = await authApi.signUp(input);
+      await persistAndApply(res);
+    },
+    [persistAndApply],
+  );
+
+  const signInWithGoogle = useCallback(
+    async (idToken: string, username?: string) => {
+      const res = await authApi.signInWithGoogle(idToken, username);
+      await persistAndApply(res);
+    },
+    [persistAndApply],
+  );
+
+  const signInWithApple = useCallback(
+    async (payload: authApi.AppleSignInPayload) => {
+      const res = await authApi.signInWithApple(payload);
+      await persistAndApply(res);
+    },
+    [persistAndApply],
+  );
+
+  const refreshUser = useCallback(async () => {
+    const fresh = await authApi.getMe();
+    setUser((prev) => (sameAuthUser(prev, fresh) ? prev : fresh));
+    await authStorage.updateCachedUser(fresh);
+  }, []);
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    await authApi.requestPasswordReset(email);
+  }, []);
+
+  const verifyPasswordResetCode = useCallback(async (email: string, code: string) => {
+    await authApi.verifyPasswordResetCode(email, code);
+  }, []);
+
+  const confirmPasswordReset = useCallback(
+    async (email: string, code: string, newPassword: string) => {
+      await authApi.confirmPasswordReset(email, code, newPassword);
+    },
+    [],
+  );
 
   const likePost = useCallback((postId: string) => {
     setPosts((prev) => {
@@ -139,9 +299,24 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     [picks],
   );
 
+  const authed = token !== null;
+
   const value = useMemo<AppStateCtx>(
     () => ({
-      authed, setAuthed,
+      authed,
+      authLoading,
+      user,
+      token,
+      signIn,
+      signUp,
+      signInWithGoogle,
+      signInWithApple,
+      signOut,
+      refreshUser,
+      requestPasswordReset,
+      verifyPasswordResetCode,
+      confirmPasswordReset,
+
       posts, setPosts, likePost,
       picks, setPick, clearPicks, pickCount,
       ticketsLeft, setTicketsLeft, buyTickets,
@@ -151,7 +326,10 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       submitSlip,
     }),
     [
-      authed, posts, likePost, picks, setPick, clearPicks, pickCount,
+      authed, authLoading, user, token,
+      signIn, signUp, signInWithGoogle, signInWithApple, signOut, refreshUser,
+      requestPasswordReset, verifyPasswordResetCode, confirmPasswordReset,
+      posts, likePost, picks, setPick, clearPicks, pickCount,
       ticketsLeft, buyTickets, filter, ticketVariant, setTicketVariant,
       feedLayout, setFeedLayout, submitSlip,
     ],
