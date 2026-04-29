@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Avatar } from '@/components/atoms/Avatar';
 import { Icon } from '@/components/atoms/Icon';
 import { Ticket } from '@/components/ticket/Ticket';
-import { USERS } from '@/data/users';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
 import type { Post } from '@/types/domain';
@@ -27,31 +26,24 @@ function FeedPostCompactImpl({
   onOpenUser,
 }: FeedPostCompactProps) {
   const theme = useTheme();
-  const u = USERS[post.userId];
-  if (!u) return null;
+  const { username, avatarUrl } = post.author;
 
   return (
     <View style={[styles.wrap, { borderBottomColor: theme.lineSoft }]}>
-      <Pressable onPress={() => onOpenUser(u.id)}>
-        <Avatar user={u} size={34} />
+      <Pressable onPress={() => onOpenUser(post.userId)}>
+        <Avatar author={{ username, avatarUrl }} size={34} />
       </Pressable>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={styles.head}>
-          <Pressable onPress={() => onOpenUser(u.id)}>
-            <Text style={[styles.name, { color: theme.text }]}>{u.name}</Text>
+          <Pressable onPress={() => onOpenUser(post.userId)}>
+            <Text style={[styles.name, { color: theme.text }]}>{username}</Text>
           </Pressable>
-          <Pressable onPress={() => onOpenUser(u.id)}>
-            <Text style={[styles.handle, { color: theme.text3 }]}>@{u.handle}</Text>
+          <Pressable onPress={() => onOpenUser(post.userId)}>
+            <Text style={[styles.handle, { color: theme.text3 }]}>@{username}</Text>
           </Pressable>
           <Text style={{ color: theme.text3, fontSize: 11 }}>·</Text>
           <Text style={[styles.handle, { color: theme.text3 }]}>{post.timeAgo}</Text>
           <View style={{ flex: 1 }} />
-          {u.streak >= 5 ? (
-            <View style={styles.streak}>
-              <Icon name="flame" size={10} stroke={2.2} color={theme.neon} />
-              <Text style={[styles.streakTxt, { color: theme.neon }]}>{u.streak}</Text>
-            </View>
-          ) : null}
         </View>
         {post.caption ? (
           <Text style={[styles.caption, { color: theme.text }]}>{post.caption}</Text>
@@ -103,15 +95,6 @@ const styles = StyleSheet.create({
   handle: {
     fontFamily: Fonts.monoRegular,
     fontSize: 11,
-  },
-  streak: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  streakTxt: {
-    fontFamily: Fonts.monoBold,
-    fontSize: 10,
   },
   caption: {
     fontFamily: Fonts.uiRegular,

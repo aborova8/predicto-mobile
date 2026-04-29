@@ -4,7 +4,6 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { Avatar } from '@/components/atoms/Avatar';
 import { Icon } from '@/components/atoms/Icon';
 import { ScreenHeader } from '@/components/nav/ScreenHeader';
-import { COMMENTS } from '@/data/comments';
 import { fixtureMap } from '@/data/fixtures';
 import { PAST_PREDICTIONS, PAST_TICKETS } from '@/data/leaderboard';
 import { TEAMS } from '@/data/teams';
@@ -62,7 +61,6 @@ export default function TicketDetailScreen() {
   let points = 0;
   let stake = 0;
   let caption: string | undefined;
-  let postId: string | null = null;
   let displayName: string | undefined;
   let displayAvatarUrl: string | null = null;
 
@@ -139,7 +137,6 @@ export default function TicketDetailScreen() {
   const c = ticketStatusColor(theme, statusKey);
   const statusLabel = ticketStatusLabel(statusKey);
   const sGlyph = statusGlyph(statusKey);
-  const comments = postId ? COMMENTS[postId] ?? [] : [];
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -257,43 +254,6 @@ export default function TicketDetailScreen() {
         {caption ? (
           <Text style={[styles.caption, { color: theme.text2 }]}>{caption}</Text>
         ) : null}
-
-        {/* Comments inline */}
-        <View style={[styles.commentSection, { borderTopColor: theme.lineSoft }]}>
-          <Text style={[styles.commentTitle, { color: theme.text }]}>
-            Comments{' '}
-            <Text style={{ color: theme.text3, fontFamily: Fonts.monoMedium, fontSize: 12 }}>
-              {comments.length}
-            </Text>
-          </Text>
-          {comments.length === 0 ? (
-            <Text style={[styles.commentEmpty, { color: theme.text3 }]}>
-              {postId ? 'No comments yet. Start the conversation.' : "Comments aren't available on this slip."}
-            </Text>
-          ) : (
-            comments.map((c2) => {
-              const cu = USERS[c2.userId];
-              return (
-                <View key={c2.id} style={styles.commentRow}>
-                  {cu ? <Avatar user={cu} size={32} /> : null}
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.commentHead}>
-                      <Text style={{ color: theme.text, fontFamily: Fonts.dispBold, fontSize: 13 }}>
-                        {cu?.name}
-                      </Text>
-                      <Text style={{ color: theme.text3, fontFamily: Fonts.monoRegular, fontSize: 10 }}>
-                        {c2.time}
-                      </Text>
-                    </View>
-                    <Text style={{ color: theme.text, fontFamily: Fonts.uiRegular, fontSize: 13, marginTop: 2 }}>
-                      {c2.text}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })
-          )}
-        </View>
       </ScrollView>
     </View>
   );
@@ -410,30 +370,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     marginBottom: 14,
-  },
-  commentSection: {
-    paddingTop: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  commentTitle: {
-    fontFamily: Fonts.dispBold,
-    fontSize: 14,
-    marginBottom: 12,
-  },
-  commentEmpty: {
-    paddingVertical: 24,
-    textAlign: 'center',
-    fontFamily: Fonts.uiRegular,
-    fontSize: 13,
-  },
-  commentRow: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingVertical: 8,
-  },
-  commentHead: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 5,
   },
 });

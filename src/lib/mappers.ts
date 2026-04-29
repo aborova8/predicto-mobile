@@ -1,10 +1,13 @@
 import { setMatch } from '@/lib/matchCache';
 import type {
+  BackendComment,
+  BackendCommentCreated,
   BackendFeedItem,
   BackendMatch,
   BackendPick,
   BackendPrediction,
   BackendTicket,
+  FeedComment,
   Fixture,
   Leg,
   LegStatus,
@@ -161,11 +164,61 @@ export function feedItemToPost(item: BackendFeedItem, now: Date = new Date()): P
   return {
     id: item.id,
     userId: item.author.id,
+    author: {
+      id: item.author.id,
+      username: item.author.username,
+      avatarUrl: item.author.avatarUrl,
+    },
     timeAgo: formatRelativeTime(item.createdAt, now),
     likes: item.counts.likes,
     liked: item.viewer.liked,
     comments: item.counts.comments,
     caption: item.caption ?? undefined,
     ticket: backendTicketToTicket(item.ticket, now),
+  };
+}
+
+export function backendCommentToFeedComment(
+  c: BackendComment,
+  currentUserId: string | null,
+  now: Date = new Date(),
+): FeedComment {
+  return {
+    id: c.id,
+    parentId: c.parentId,
+    author: {
+      id: c.author.id,
+      username: c.author.username,
+      avatarUrl: c.author.avatarUrl,
+    },
+    text: c.body,
+    time: formatRelativeTime(c.createdAt, now),
+    likes: c._count.likes,
+    liked: c.viewer.liked,
+    replies: c.children.map((child) => backendCommentToFeedComment(child, currentUserId, now)),
+    isMine: currentUserId !== null && c.author.id === currentUserId,
+  };
+}
+
+// New comment from POST has no counts/viewer/children — synthesise the local view.
+export function createdCommentToFeedComment(
+  c: BackendCommentCreated,
+  currentUserId: string | null,
+  now: Date = new Date(),
+): FeedComment {
+  return {
+    id: c.id,
+    parentId: c.parentId,
+    author: {
+      id: c.author.id,
+      username: c.author.username,
+      avatarUrl: c.author.avatarUrl,
+    },
+    text: c.body,
+    time: formatRelativeTime(c.createdAt, now),
+    likes: 0,
+    liked: false,
+    replies: [],
+    isMine: currentUserId !== null && c.author.id === currentUserId,
   };
 }

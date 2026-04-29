@@ -86,9 +86,16 @@ export interface Ticket {
   stake?: number;
 }
 
+export interface PostAuthor {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+}
+
 export interface Post {
   id: string;
   userId: string;
+  author: PostAuthor;
   timeAgo: string;
   likes: number;
   liked: boolean;
@@ -112,6 +119,21 @@ export interface Comment {
   time: string;
   likes: number;
   replies: Reply[];
+}
+
+// Live, backend-driven comment shape used by the feed/comments sheet.
+// Distinct from the legacy mock-driven `Comment` type which other screens
+// (leaderboard, profile) still import.
+export interface FeedComment {
+  id: string;
+  parentId: string | null;
+  author: PostAuthor;
+  text: string;
+  time: string;
+  likes: number;
+  liked: boolean;
+  replies: FeedComment[];
+  isMine: boolean;
 }
 
 export interface Group {
@@ -264,6 +286,32 @@ export interface BackendFeedItem {
   ticket: BackendTicket;
   counts: { likes: number; comments: number };
   viewer: { liked: boolean };
+}
+
+// Returned by GET /api/comments/post/:postId. Tree-shaped — root nodes carry
+// nested `children`. The `_count.replies` field reflects the full subtree size
+// at the DB level even when `children` is empty client-side.
+export interface BackendComment {
+  id: string;
+  postId: string;
+  parentId: string | null;
+  body: string;
+  createdAt: string;
+  author: BackendFeedAuthor;
+  _count: { likes: number; replies: number };
+  viewer: { liked: boolean };
+  children: BackendComment[];
+}
+
+// Shape returned by POST /api/comments/post/:postId — flatter, no counts/viewer/children.
+export interface BackendCommentCreated {
+  id: string;
+  postId: string;
+  parentId: string | null;
+  body: string;
+  createdAt: string;
+  authorId: string;
+  author: BackendFeedAuthor;
 }
 
 export interface Eligibility {

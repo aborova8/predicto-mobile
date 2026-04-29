@@ -1,8 +1,18 @@
-import type { Post } from '@/types/domain';
+import { USERS } from '@/data/users';
+import type { Post, PostAuthor } from '@/types/domain';
+
+function authorFor(userId: string): PostAuthor {
+  const u = USERS[userId];
+  return {
+    id: userId,
+    username: u?.handle ?? userId,
+    avatarUrl: null,
+  };
+}
 
 export const POSTS: Post[] = [
   {
-    id: 'p1', userId: 'u3', timeAgo: '8m', likes: 47, liked: false, comments: 12,
+    id: 'p1', userId: 'u3', author: authorFor('u3'), timeAgo: '8m', likes: 47, liked: false, comments: 12,
     caption: 'El Clásico day. trusting the home form 🏟️',
     ticket: {
       id: 't1', status: 'pending', potential: 845,
@@ -14,7 +24,7 @@ export const POSTS: Post[] = [
     },
   },
   {
-    id: 'p2', userId: 'u2', timeAgo: '24m', likes: 89, liked: true, comments: 23,
+    id: 'p2', userId: 'u2', author: authorFor('u2'), timeAgo: '24m', likes: 89, liked: true, comments: 23,
     caption: 'Derby weekend. all draws, all banger.',
     ticket: {
       id: 't2', status: 'pending', potential: 1240,
@@ -26,7 +36,7 @@ export const POSTS: Post[] = [
     },
   },
   {
-    id: 'p3', userId: 'u6', timeAgo: '1h', likes: 156, liked: false, comments: 34,
+    id: 'p3', userId: 'u6', author: authorFor('u6'), timeAgo: '1h', likes: 156, liked: false, comments: 34,
     caption: 'Bayern away? thanks but no thanks. Leipzig take it.',
     ticket: {
       id: 't3', status: 'pending', potential: 370,
@@ -36,7 +46,7 @@ export const POSTS: Post[] = [
     },
   },
   {
-    id: 'p4', userId: 'u5', timeAgo: '2h', likes: 28, liked: false, comments: 7,
+    id: 'p4', userId: 'u5', author: authorFor('u5'), timeAgo: '2h', likes: 28, liked: false, comments: 7,
     caption: "Safe-ish accumulator. let's eat. one in the bag already.",
     ticket: {
       id: 't4', status: 'pending', potential: 412,
@@ -48,7 +58,7 @@ export const POSTS: Post[] = [
     },
   },
   {
-    id: 'p5', userId: 'u9', timeAgo: '4h', likes: 312, liked: true, comments: 78,
+    id: 'p5', userId: 'u9', author: authorFor('u9'), timeAgo: '4h', likes: 312, liked: true, comments: 78,
     caption: "Yesterday's slip cashed. up 4 in a row 🔥",
     ticket: {
       id: 't5', status: 'won', potential: 1950,
@@ -60,7 +70,7 @@ export const POSTS: Post[] = [
     },
   },
   {
-    id: 'p6', userId: 'u7', timeAgo: '6h', likes: 19, liked: false, comments: 4,
+    id: 'p6', userId: 'u7', author: authorFor('u7'), timeAgo: '6h', likes: 19, liked: false, comments: 4,
     caption: 'rolling the dice on PSG away. could be carnage.',
     ticket: {
       id: 't6', status: 'pending', potential: 350,
@@ -70,7 +80,7 @@ export const POSTS: Post[] = [
     },
   },
   {
-    id: 'p7', userId: 'u4', timeAgo: '12h', likes: 64, liked: false, comments: 11,
+    id: 'p7', userId: 'u4', author: authorFor('u4'), timeAgo: '12h', likes: 64, liked: false, comments: 11,
     caption: 'Slip went down on the last leg. brutal.',
     ticket: {
       id: 't7', status: 'lost', potential: 0,

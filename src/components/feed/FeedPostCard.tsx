@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Avatar } from '@/components/atoms/Avatar';
 import { Icon } from '@/components/atoms/Icon';
 import { Ticket } from '@/components/ticket/Ticket';
-import { USERS } from '@/data/users';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
 import type { Post } from '@/types/domain';
@@ -27,28 +26,20 @@ function FeedPostCardImpl({
   onOpenUser,
 }: FeedPostCardProps) {
   const theme = useTheme();
-  const u = USERS[post.userId];
-  if (!u) return null;
+  const { username, avatarUrl } = post.author;
 
   return (
     <View style={[styles.wrap, { borderBottomColor: theme.lineSoft }]}>
       <View style={styles.author}>
-        <Pressable onPress={() => onOpenUser(u.id)}>
-          <Avatar user={u} size={38} />
+        <Pressable onPress={() => onOpenUser(post.userId)}>
+          <Avatar author={{ username, avatarUrl }} size={38} />
         </Pressable>
-        <Pressable style={{ flex: 1, minWidth: 0 }} onPress={() => onOpenUser(u.id)}>
+        <Pressable style={{ flex: 1, minWidth: 0 }} onPress={() => onOpenUser(post.userId)}>
           <View style={styles.nameRow}>
-            <Text style={[styles.name, { color: theme.text }]}>{u.name}</Text>
-            <Text style={[styles.level, { color: theme.text3 }]}>L{u.level}</Text>
-            {u.streak >= 5 ? (
-              <View style={styles.streak}>
-                <Icon name="flame" size={11} stroke={2.2} color={theme.neon} />
-                <Text style={[styles.streakTxt, { color: theme.neon }]}>{u.streak}</Text>
-              </View>
-            ) : null}
+            <Text style={[styles.name, { color: theme.text }]}>{username}</Text>
           </View>
           <Text style={[styles.handle, { color: theme.text3 }]}>
-            @{u.handle} · {post.timeAgo}
+            @{username} · {post.timeAgo}
           </Text>
         </Pressable>
         <View style={styles.dotsBtn}>
@@ -111,19 +102,6 @@ const styles = StyleSheet.create({
   name: {
     fontFamily: Fonts.dispBold,
     fontSize: 14,
-  },
-  level: {
-    fontFamily: Fonts.monoMedium,
-    fontSize: 10,
-  },
-  streak: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  streakTxt: {
-    fontFamily: Fonts.monoBold,
-    fontSize: 10,
   },
   handle: {
     fontFamily: Fonts.monoRegular,

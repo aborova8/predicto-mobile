@@ -17,6 +17,12 @@ export function listFeed(
   );
 }
 
+export function getPost(postId: string): Promise<{ post: BackendFeedItem }> {
+  return api.get<{ post: BackendFeedItem }>(
+    `/api/feed/posts/${encodeURIComponent(postId)}`,
+  );
+}
+
 export function likePost(postId: string): Promise<{ ok: true }> {
   return api.post<{ ok: true }>(`/api/feed/posts/${encodeURIComponent(postId)}/like`);
 }
