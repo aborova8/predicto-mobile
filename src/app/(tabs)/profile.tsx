@@ -1,7 +1,10 @@
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,10 +17,11 @@ import { Avatar } from '@/components/atoms/Avatar';
 import { Icon } from '@/components/atoms/Icon';
 import { Pill } from '@/components/atoms/Pill';
 import { SectionHeader } from '@/components/atoms/SectionHeader';
-import { BADGES } from '@/data/badges';
-import { PAST_PREDICTIONS, PAST_TICKETS } from '@/data/leaderboard';
-import { USERS } from '@/data/users';
+import { errorMessage } from '@/lib/api';
+import { getAllBadges, getMyBadges } from '@/lib/api/badges';
+import { getMyProfile, getMyTickets } from '@/lib/api/users';
 import { withAlpha } from '@/lib/colors';
+import { deriveAbbrev, legStatusFromPick } from '@/lib/mappers';
 import {
   legStatusColor,
   statusGlyph as statusGlyphFn,
@@ -27,31 +31,123 @@ import {
 import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
-import type { PastTicket, PastPrediction, TicketStatus } from '@/types/domain';
+import type {
+  BackendPick,
+  BackendTicket,
+  BackendTicketStatus,
+  BadgeDefinition,
+  MyProfile,
+  TicketStatus,
+} from '@/types/domain';
 
-const TICKETS_WON = PAST_TICKETS.filter((t) => t.status === 'won').length;
-const TICKETS_LOST = PAST_TICKETS.filter((t) => t.status === 'lost').length;
-const TICKETS_PENDING = PAST_TICKETS.filter((t) => t.status === 'pending').length;
-const TICKET_HIT = Math.round((TICKETS_WON / (TICKETS_WON + TICKETS_LOST)) * 100);
-const AVG_ODDS = PAST_TICKETS.reduce((a, t) => a + t.multiplier, 0) / PAST_TICKETS.length;
+type Filter = TicketStatus | 'all';
+
+function toUiStatus(s: BackendTicketStatus): TicketStatus {
+  if (s === 'WON') return 'won';
+  if (s === 'LOST') return 'lost';
+  return 'pending';
+}
+
+function pickLabelFromBackend(pick: BackendPick): string {
+  if (pick.prediction === 'HOME') return deriveAbbrev(pick.match.homeTeam, pick.match.homeAbbrev);
+  if (pick.prediction === 'AWAY') return deriveAbbrev(pick.match.awayTeam, pick.match.awayAbbrev);
+  return 'DRAW';
+}
+
+function formatTicketDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
 
 export default function ProfileScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { signOut } = useAppState();
-  const [filter, setFilter] = useState<TicketStatus | 'all'>('all');
+  const [filter, setFilter] = useState<Filter>('all');
 
-  const u = USERS.u1;
-  const tickets = useMemo(
-    () => (filter === 'all' ? PAST_TICKETS : PAST_TICKETS.filter((t) => t.status === filter)),
-    [filter],
-  );
+  const [profile, setProfile] = useState<MyProfile | null>(null);
+  const [tickets, setTickets] = useState<BackendTicket[]>([]);
+  const [allBadges, setAllBadges] = useState<BadgeDefinition[]>([]);
+  const [myBadgeIds, setMyBadgeIds] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadAll() {
+    setError(null);
+    try {
+      const [{ profile: p }, tx, allB, myB] = await Promise.all([
+        getMyProfile(),
+        getMyTickets(1, 50),
+        getAllBadges(),
+        getMyBadges(),
+      ]);
+      setProfile(p);
+      setTickets(tx.items);
+      setAllBadges(allB.items);
+      setMyBadgeIds(new Set(myB.items.map((u) => u.badgeId)));
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to load profile'));
+    }
+  }
+
+  useEffect(() => {
+    void (async () => {
+      await loadAll();
+      setLoading(false);
+    })();
+  }, []);
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await loadAll();
+    setRefreshing(false);
+  }
+
+  if (loading && !profile) {
+    return (
+      <View style={[styles.center, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator color={theme.neon} />
+      </View>
+    );
+  }
+
+  if (error && !profile) {
+    return (
+      <View style={[styles.center, { backgroundColor: theme.bg, paddingHorizontal: 24 }]}>
+        <Text style={[styles.errorText, { color: theme.text }]}>{error}</Text>
+        <Pressable
+          onPress={() => {
+            setLoading(true);
+            void loadAll().finally(() => setLoading(false));
+          }}
+          style={[styles.retryBtn, { backgroundColor: theme.neon }]}
+        >
+          <Text style={{ color: '#06091A', fontFamily: Fonts.monoBold, fontSize: 12 }}>RETRY</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (!profile) return null;
+
+  const ticketHit = Math.round(profile.stats.winRate * 100);
+  const avgOdds = profile.stats.avgOdds;
+  const xpPct = profile.xpToNextLevel === 0
+    ? 0
+    : Math.min(100, Math.round((profile.xpInLevel / profile.xpToNextLevel) * 100));
+
+  const filteredTickets =
+    filter === 'all' ? tickets : tickets.filter((t) => toUiStatus(t.status) === filter);
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
       contentContainerStyle={{ paddingBottom: 120 }}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.text2} />
+      }
     >
       <LinearGradient
         colors={[theme.neonDim, 'transparent']}
@@ -74,13 +170,17 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.heroRow}>
-          <Avatar user={u} size={72} ring />
+          <Avatar
+            author={{ username: profile.username, avatarUrl: profile.avatarUrl }}
+            size={72}
+            ring
+          />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.name, { color: theme.text }]}>{u.name}</Text>
-            <Text style={[styles.handle, { color: theme.text2 }]}>@{u.handle}</Text>
+            <Text style={[styles.name, { color: theme.text }]}>{profile.username}</Text>
+            <Text style={[styles.handle, { color: theme.text2 }]}>@{profile.username}</Text>
             <View style={styles.pillRow}>
-              <Pill color={theme.neon}>{`LVL ${u.level}`}</Pill>
-              <Pill>{`🔥 ${u.streak} STREAK`}</Pill>
+              <Pill color={theme.neon}>{`LVL ${profile.level}`}</Pill>
+              {profile.streak > 0 ? <Pill>{`🔥 ${profile.streak} STREAK`}</Pill> : null}
             </View>
           </View>
         </View>
@@ -88,13 +188,22 @@ export default function ProfileScreen() {
 
       <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
         <View style={styles.gridRow2}>
-          <StatBox label="Ticket Hit" value={`${TICKET_HIT}%`} valueColor={theme.neon} />
-          <StatBox label="Avg Odds" value={`${AVG_ODDS.toFixed(2)}×`} valueColor={theme.text} />
+          <StatBox label="Ticket Hit" value={`${ticketHit}%`} valueColor={theme.neon} />
+          <StatBox
+            label="Avg Odds"
+            value={avgOdds === null ? '—' : `${avgOdds.toFixed(2)}×`}
+            valueColor={theme.text}
+          />
         </View>
         <View style={[styles.gridRow3, { marginTop: 8 }]}>
-          <StatBox label="Won" value={`${TICKETS_WON}`} valueColor={theme.win} small />
-          <StatBox label="Lost" value={`${TICKETS_LOST}`} valueColor={theme.loss} small />
-          <StatBox label="Tickets" value={`${u.tickets}`} valueColor={theme.text2} small />
+          <StatBox label="Won" value={`${profile.stats.won}`} valueColor={theme.win} small />
+          <StatBox label="Lost" value={`${profile.stats.lost}`} valueColor={theme.loss} small />
+          <StatBox
+            label="Tickets"
+            value={`${profile.stats.totalTickets}`}
+            valueColor={theme.text2}
+            small
+          />
         </View>
 
         <View
@@ -105,16 +214,27 @@ export default function ProfileScreen() {
         >
           <View style={styles.xpHead}>
             <Text style={[styles.xpLabel, { color: theme.text3 }]}>NEXT LEVEL</Text>
-            <Text style={[styles.xpAmount, { color: theme.text2 }]}>1,687 / 2,000 XP</Text>
+            <Text style={[styles.xpAmount, { color: theme.text2 }]}>
+              {profile.xpInLevel.toLocaleString()} / {profile.xpToNextLevel.toLocaleString()} XP
+            </Text>
           </View>
           <View style={[styles.xpBar, { backgroundColor: theme.surface2 }]}>
-            <View style={[styles.xpFill, { backgroundColor: theme.neon, shadowColor: theme.neon }]} />
+            <View
+              style={[
+                styles.xpFill,
+                {
+                  backgroundColor: theme.neon,
+                  shadowColor: theme.neon,
+                  width: `${xpPct}%`,
+                },
+              ]}
+            />
           </View>
         </View>
       </View>
 
       <View style={{ marginTop: 18 }}>
-        <SectionHeader title="Badges" action="See all" />
+        <SectionHeader title="Badges" />
       </View>
       <ScrollView
         horizontal
@@ -122,66 +242,63 @@ export default function ProfileScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
         style={{ marginBottom: 18 }}
       >
-        {BADGES.map((b) => (
-          <View
-            key={b.id}
-            style={[
-              styles.badgeCard,
-              {
-                backgroundColor: theme.surface,
-                borderColor: b.earned ? withAlpha(theme.neon, 0.33) : theme.line,
-                opacity: b.earned ? 1 : 0.5,
-              },
-            ]}
-          >
+        {allBadges.length === 0 ? (
+          <View style={[styles.emptyBadgeCard, { borderColor: theme.line }]}>
+            <Text style={{ color: theme.text3, fontFamily: Fonts.monoMedium, fontSize: 11 }}>
+              NO BADGES YET
+            </Text>
+          </View>
+        ) : null}
+        {allBadges.map((b) => {
+          const earned = myBadgeIds.has(b.id);
+          return (
             <View
+              key={b.id}
               style={[
-                styles.badgeIcon,
+                styles.badgeCard,
                 {
-                  backgroundColor: b.earned ? theme.neonDim : theme.surface2,
+                  backgroundColor: theme.surface,
+                  borderColor: earned ? withAlpha(theme.neon, 0.33) : theme.line,
+                  opacity: earned ? 1 : 0.5,
                 },
               ]}
             >
-              <Text style={{ fontSize: 22 }}>{b.emoji ?? '🔒'}</Text>
-            </View>
-            <Text style={[styles.badgeName, { color: theme.text }]}>{b.name}</Text>
-            {b.earned ? (
-              <Text style={[styles.badgeMeta, { color: theme.text3 }]}>EARNED</Text>
-            ) : (
-              <View style={{ marginTop: 4, width: '100%' }}>
-                <View style={[styles.progressBar, { backgroundColor: theme.surface2 }]}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      {
-                        backgroundColor: theme.neon,
-                        width: `${((b.progress ?? 0) / (b.max ?? 1)) * 100}%`,
-                      },
-                    ]}
-                  />
-                </View>
-                <Text style={[styles.badgeMeta, { color: theme.text3 }]}>
-                  {b.progress}/{b.max}
-                </Text>
+              <View
+                style={[
+                  styles.badgeIcon,
+                  { backgroundColor: earned ? theme.neonDim : theme.surface2 },
+                ]}
+              >
+                {b.iconUrl ? (
+                  <Image source={{ uri: b.iconUrl }} style={styles.badgeIconImg} />
+                ) : (
+                  <Text style={{ fontSize: 20 }}>{earned ? '🏆' : '🔒'}</Text>
+                )}
               </View>
-            )}
-          </View>
-        ))}
+              <Text style={[styles.badgeName, { color: theme.text }]} numberOfLines={1}>
+                {b.name}
+              </Text>
+              <Text style={[styles.badgeMeta, { color: theme.text3 }]}>
+                {earned ? 'EARNED' : 'LOCKED'}
+              </Text>
+            </View>
+          );
+        })}
       </ScrollView>
 
       <View style={styles.historyHead}>
         <Text style={[styles.historyTitle, { color: theme.text }]}>Ticket history</Text>
         <Text style={[styles.historyMeta, { color: theme.text3 }]}>
-          {PAST_TICKETS.length} TOTAL · POINTS ONLY ON FULL WINS
+          {profile.stats.totalTickets} TOTAL · POINTS ONLY ON FULL WINS
         </Text>
       </View>
 
       <View style={styles.filterRow}>
         {([
-          { id: 'all', label: 'All', count: PAST_TICKETS.length },
-          { id: 'won', label: 'Won', count: TICKETS_WON },
-          { id: 'lost', label: 'Lost', count: TICKETS_LOST },
-          { id: 'pending', label: 'Pending', count: TICKETS_PENDING },
+          { id: 'all', label: 'All', count: profile.stats.totalTickets },
+          { id: 'won', label: 'Won', count: profile.stats.won },
+          { id: 'lost', label: 'Lost', count: profile.stats.lost },
+          { id: 'pending', label: 'Pending', count: profile.stats.pending },
         ] as const).map((f) => {
           const a = filter === f.id;
           return (
@@ -205,14 +322,14 @@ export default function ProfileScreen() {
       </View>
 
       <View style={{ paddingHorizontal: 16, gap: 10 }}>
-        {tickets.length === 0 ? (
+        {filteredTickets.length === 0 ? (
           <View style={[styles.emptyCard, { borderColor: theme.line }]}>
             <Text style={{ color: theme.text3, fontFamily: Fonts.monoMedium, fontSize: 11, letterSpacing: 0.5 }}>
               NO {filter.toUpperCase()} TICKETS
             </Text>
           </View>
         ) : null}
-        {tickets.map((t) => (
+        {filteredTickets.map((t) => (
           <TicketHistoryCard key={t.id} ticket={t} />
         ))}
       </View>
@@ -247,16 +364,16 @@ function StatBox({
   );
 }
 
-function TicketHistoryCard({ ticket }: { ticket: PastTicket }) {
+function TicketHistoryCard({ ticket }: { ticket: BackendTicket }) {
   const theme = useTheme();
   const router = useRouter();
-  const legs: PastPrediction[] = ticket.legIds
-    .map((id) => PAST_PREDICTIONS.find((p) => p.id === id))
-    .filter((p): p is PastPrediction => Boolean(p));
-  const legsWon = legs.filter((l) => l.status === 'won').length;
-  const c = ticketStatusColor(theme, ticket.status);
-  const statusLabel = ticketStatusLabel(ticket.status);
-  const statusGlyph = statusGlyphFn(ticket.status);
+  const uiStatus = toUiStatus(ticket.status);
+  const legs = ticket.picks;
+  const legsWon = legs.filter((l) => l.isCorrect === true).length;
+  const c = ticketStatusColor(theme, uiStatus);
+  const statusLabel =
+    ticket.status === 'VOID' ? 'VOID' : ticketStatusLabel(uiStatus);
+  const statusGlyph = statusGlyphFn(uiStatus);
 
   return (
     <Pressable
@@ -278,13 +395,17 @@ function TicketHistoryCard({ ticket }: { ticket: PastTicket }) {
         <View style={{ flex: 1 }}>
           <Text style={[styles.histStatus, { color: c }]}>{statusLabel}</Text>
           <Text style={[styles.histInfo, { color: theme.text }]}>
-            {legs.length}-leg · {ticket.multiplier.toFixed(2)}×{' '}
-            <Text style={{ color: theme.text3 }}>· {ticket.date}</Text>
+            {legs.length}-leg · {ticket.totalOdds.toFixed(2)}×{' '}
+            <Text style={{ color: theme.text3 }}>· {formatTicketDate(ticket.createdAt)}</Text>
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={[styles.histPoints, { color: c }]}>
-            {ticket.status === 'won' ? `+${ticket.points}` : ticket.status === 'lost' ? '0' : '···'}
+            {ticket.status === 'WON'
+              ? `+${ticket.pointsAwarded}`
+              : ticket.status === 'LOST'
+              ? '0'
+              : '···'}
           </Text>
           <Text style={[styles.histPointsLabel, { color: theme.text3 }]}>POINTS</Text>
         </View>
@@ -293,8 +414,10 @@ function TicketHistoryCard({ ticket }: { ticket: PastTicket }) {
       {legs.length > 0 ? (
         <View style={[styles.histLegs, { borderTopColor: theme.lineSoft }]}>
           {legs.map((l) => {
-            const lc = legStatusColor(theme, l.status);
-            const pickLabel = l.pick === '1' ? l.home : l.pick === '2' ? l.away : 'DRAW';
+            const ls = legStatusFromPick(l);
+            const lc = legStatusColor(theme, ls);
+            const homeAbbrev = deriveAbbrev(l.match.homeTeam, l.match.homeAbbrev);
+            const awayAbbrev = deriveAbbrev(l.match.awayTeam, l.match.awayAbbrev);
             return (
               <View key={l.id} style={styles.legLine}>
                 <View
@@ -304,17 +427,17 @@ function TicketHistoryCard({ ticket }: { ticket: PastTicket }) {
                   ]}
                 >
                   <Text style={{ color: lc, fontFamily: Fonts.monoBlack, fontSize: 9 }}>
-                    {statusGlyphFn(l.status)}
+                    {statusGlyphFn(ls)}
                   </Text>
                 </View>
                 <Text style={{ color: theme.text, fontFamily: Fonts.monoBold, fontSize: 11 }}>
-                  {l.home}
+                  {homeAbbrev}
                   <Text style={{ color: theme.text3, fontFamily: Fonts.monoRegular }}> vs </Text>
-                  {l.away}
+                  {awayAbbrev}
                 </Text>
                 <View style={{ flex: 1 }} />
                 <Text style={{ color: theme.text3, fontFamily: Fonts.monoRegular, fontSize: 11 }}>
-                  {pickLabel} · {l.odds.toFixed(2)}×
+                  {pickLabelFromBackend(l)} · {l.oddsAtPick.toFixed(2)}×
                 </Text>
               </View>
             );
@@ -322,13 +445,13 @@ function TicketHistoryCard({ ticket }: { ticket: PastTicket }) {
         </View>
       ) : null}
 
-      {ticket.status !== 'pending' ? (
+      {ticket.status !== 'PENDING' ? (
         <View style={styles.histFoot}>
           <Text style={[styles.histFootTxt, { color: theme.text3 }]}>
             {legsWon}/{legs.length} LEGS HIT
           </Text>
           <Text style={[styles.histFootTxt, { color: theme.text3 }]}>
-            STAKE {ticket.stake} · TAP FOR SLIP ›
+            TAP FOR SLIP ›
           </Text>
         </View>
       ) : null}
@@ -337,6 +460,22 @@ function TicketHistoryCard({ ticket }: { ticket: PastTicket }) {
 }
 
 const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorText: {
+    fontFamily: Fonts.monoMedium,
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  retryBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+  },
   heroGrad: {
     paddingHorizontal: 16,
     paddingBottom: 16,
@@ -426,7 +565,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   xpFill: {
-    width: '84%',
     height: '100%',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.4,
@@ -448,6 +586,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
+    overflow: 'hidden',
+  },
+  badgeIconImg: {
+    width: 40,
+    height: 40,
   },
   badgeName: {
     fontFamily: Fonts.dispBold,
@@ -460,13 +603,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textAlign: 'center',
   },
-  progressBar: {
-    height: 3,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
+  emptyBadgeCard: {
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 12,
   },
   historyHead: {
     flexDirection: 'row',

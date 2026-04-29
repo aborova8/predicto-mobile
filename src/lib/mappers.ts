@@ -103,7 +103,7 @@ export function matchToFixture(m: BackendMatch, now: Date = new Date()): Fixture
   return fixture;
 }
 
-function legStatusFromPick(pick: BackendPick): LegStatus | undefined {
+export function legStatusFromPick(pick: BackendPick): LegStatus | undefined {
   if (pick.isCorrect === true) return 'won';
   if (pick.isCorrect === false) return 'lost';
   return undefined;

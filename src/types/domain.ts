@@ -64,7 +64,51 @@ export interface AuthUser {
   role: AuthRole;
   points: number;
   livesBalance: number;
+  streak: number;
+  xp: number;
+  level: number;
   createdAt: string;
+}
+
+export interface MyProfileStats {
+  totalTickets: number;
+  won: number;
+  lost: number;
+  pending: number;
+  winRate: number;
+  lossRate: number;
+  avgOdds: number | null;
+}
+
+export interface MyProfile {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  points: number;
+  streak: number;
+  xp: number;
+  level: number;
+  xpInLevel: number;
+  xpToNextLevel: number;
+  createdAt: string;
+  stats: MyProfileStats;
+}
+
+export interface BadgeDefinition {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  iconUrl: string | null;
+}
+
+export interface UserBadgeAwarded {
+  id: string;
+  userId: string;
+  badgeId: string;
+  awardedAt: string;
+  badge: BadgeDefinition;
 }
 
 export interface Leg {
