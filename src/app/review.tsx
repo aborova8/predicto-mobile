@@ -1,11 +1,13 @@
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '@/components/atoms/Icon';
 import { NeonButton } from '@/components/atoms/NeonButton';
 import { BottomSheet } from '@/components/sheets/BottomSheet';
 import { Ticket } from '@/components/ticket/Ticket';
 import { withAlpha } from '@/lib/colors';
+import { errorMessage } from '@/lib/api';
 import { calculateTotalOdds, fmtOdds } from '@/lib/format';
 import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
@@ -15,20 +17,29 @@ import type { Pick, Ticket as TicketModel } from '@/types/domain';
 export default function ReviewScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { picks, submitSlip } = useAppState();
+  const { picks, submitTicket } = useAppState();
+  const [submitting, setSubmitting] = useState(false);
 
   const legs = Object.entries(picks)
     .filter((entry): entry is [string, Pick] => entry[1] !== null && entry[1] !== undefined)
     .map(([matchId, pick]) => ({ matchId, pick }));
   const totalOdds = calculateTotalOdds(legs);
-  const BASE = 100;
+  const BASE = 10;
   const potential = Math.round(BASE * totalOdds);
   const ticket: TicketModel = { id: 'new', status: 'pending', potential, legs };
 
-  const handleSubmit = () => {
-    submitSlip();
-    router.dismissAll();
-    router.replace('/(tabs)');
+  const handleSubmit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await submitTicket();
+      router.dismissAll();
+      router.replace('/(tabs)');
+    } catch (err) {
+      Alert.alert('Could not lock slip', errorMessage(err, 'Please try again.'));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -45,7 +56,7 @@ export default function ReviewScreen() {
           <Text style={[styles.noteLabel, { color: theme.neon }]}>HOW POINTS WORK</Text>
           <Text style={[styles.noteBody, { color: theme.text2 }]}>
             Every slip starts with{' '}
-            <Text style={{ color: theme.text, fontFamily: Fonts.uiBold }}>100 base points</Text>. Hit
+            <Text style={{ color: theme.text, fontFamily: Fonts.uiBold }}>10 base points</Text>. Hit
             all picks to win the multiplied total — climb the leaderboard.
           </Text>
         </View>
@@ -76,8 +87,18 @@ export default function ReviewScreen() {
       </ScrollView>
 
       <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <NeonButton onPress={handleSubmit} iconLeft={<Icon name="lock" size={16} color="#06091A" stroke={2.4} />}>
-          Lock in slip
+        <NeonButton
+          onPress={handleSubmit}
+          disabled={submitting}
+          iconLeft={
+            submitting ? (
+              <ActivityIndicator size="small" color="#06091A" />
+            ) : (
+              <Icon name="lock" size={16} color="#06091A" stroke={2.4} />
+            )
+          }
+        >
+          {submitting ? 'Locking…' : 'Lock in slip'}
         </NeonButton>
         <Text style={[styles.hint, { color: theme.text3 }]}>
           ONCE LOCKED, PICKS CAN'T BE EDITED

@@ -1,33 +1,67 @@
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MatchRow } from '@/components/MatchRow';
 import { Pill } from '@/components/atoms/Pill';
-import { FIXTURES } from '@/data/fixtures';
+import { useEligibility } from '@/hooks/useEligibility';
+import { useMatches } from '@/hooks/useMatches';
 import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
-import type { Fixture } from '@/types/domain';
-
-const FIXTURES_BY_DAY: Record<number, Fixture[]> = { 0: [], 1: [], 2: [] };
-const GROUPED_BY_DAY: Record<number, Record<string, Fixture[]>> = { 0: {}, 1: {}, 2: {} };
-for (const m of FIXTURES) {
-  FIXTURES_BY_DAY[m.day].push(m);
-  const dayGroups = GROUPED_BY_DAY[m.day];
-  (dayGroups[m.league] ??= []).push(m);
-}
-const COUNTS = [FIXTURES_BY_DAY[0].length, FIXTURES_BY_DAY[1].length, FIXTURES_BY_DAY[2].length];
-const DAY_LABELS = ['Today', 'Tomorrow', 'Sunday'];
 
 export default function MatchesScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { picks, setPick, ticketsLeft, pickCount } = useAppState();
-  const [day, setDay] = useState(0);
-  const grouped = GROUPED_BY_DAY[day];
+  const { picks, setPick, pickCount } = useAppState();
+  const { byDay, days, loading, error, refetch } = useMatches();
+  const {
+    data: eligibility,
+    ticketsLeft,
+    refetch: refetchEligibility,
+  } = useEligibility();
+
+  const [day, setDay] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    setDay((prev) => {
+      if (days.length === 0) return null;
+      if (prev !== null && days.some((d) => d.index === prev)) return prev;
+      return days[0].index;
+    });
+  }, [days]);
+
+  // Refetch eligibility whenever the screen regains focus (e.g., returning
+  // from /review after a successful submit).
+  useFocusEffect(
+    useCallback(() => {
+      void refetchEligibility();
+    }, [refetchEligibility]),
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refetch(), refetchEligibility()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch, refetchEligibility]);
+
+  const grouped = day != null ? (byDay[day] ?? {}) : {};
+  const showLoading = loading && days.length === 0;
+  const canCreateTicket = eligibility?.canCreateTicket ?? false;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -35,7 +69,9 @@ export default function MatchesScreen() {
         <View style={styles.headerRow}>
           <Text style={[styles.title, { color: theme.text }]}>Build your slip</Text>
           <Pill color={ticketsLeft > 0 ? theme.neon : theme.loss} size="md">
-            {`${ticketsLeft} TICKET LEFT`}
+            {eligibility?.unlimitedTickets
+              ? 'UNLIMITED'
+              : `${ticketsLeft} TICKET${ticketsLeft === 1 ? '' : 'S'} LEFT`}
           </Pill>
         </View>
         <Text style={[styles.sub, { color: theme.text2 }]}>
@@ -43,43 +79,86 @@ export default function MatchesScreen() {
         </Text>
       </View>
 
-      <View style={[styles.daysRow, { borderBottomColor: theme.lineSoft }]}>
-        {[0, 1, 2].map((d) => {
-          const active = d === day;
-          return (
-            <Pressable
-              key={d}
-              onPress={() => setDay(d)}
-              style={[
-                styles.dayBtn,
-                {
-                  backgroundColor: active ? theme.surface : 'transparent',
-                  borderColor: active ? theme.line : 'transparent',
-                },
-              ]}
-            >
-              <Text style={[styles.dayLabel, { color: active ? theme.text : theme.text3 }]}>
-                {DAY_LABELS[d].toUpperCase()}
-              </Text>
-              <Text style={[styles.dayCount, { color: theme.text3 }]}>{COUNTS[d]}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {days.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={[styles.daysRow, { borderBottomColor: theme.lineSoft }]}
+          contentContainerStyle={styles.daysRowContent}
+        >
+          {days.map((d) => {
+            const active = d.index === day;
+            return (
+              <Pressable
+                key={d.index}
+                onPress={() => setDay(d.index)}
+                style={[
+                  styles.dayBtn,
+                  {
+                    backgroundColor: active ? theme.surface : 'transparent',
+                    borderColor: active ? theme.line : 'transparent',
+                  },
+                ]}
+              >
+                <Text style={[styles.dayLabel, { color: active ? theme.text : theme.text3 }]}>
+                  {d.label.toUpperCase()}
+                </Text>
+                <Text style={[styles.dayCount, { color: theme.text3 }]}>{d.count}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
 
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 200 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.text2}
+          />
+        }
       >
-        {Object.entries(grouped).map(([league, matches]) => (
-          <View key={league} style={{ marginBottom: 18 }}>
-            <Text style={[styles.leagueLabel, { color: theme.text3 }]}>{league.toUpperCase()}</Text>
-            <View style={{ gap: 8 }}>
-              {matches.map((m) => (
-                <MatchRow key={m.id} match={m} pick={picks[m.id] ?? null} onPick={setPick} />
-              ))}
-            </View>
+        {showLoading ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={theme.neon} />
+            <Text style={[styles.centerHint, { color: theme.text3 }]}>LOADING MATCHES…</Text>
           </View>
-        ))}
+        ) : error ? (
+          <View style={styles.center}>
+            <Text style={[styles.errorTitle, { color: theme.text }]}>Couldn't load matches</Text>
+            <Text style={[styles.errorMsg, { color: theme.text2 }]}>{error.message}</Text>
+            <Pressable
+              onPress={() => void refetch()}
+              style={[styles.retry, { borderColor: theme.line, backgroundColor: theme.surface }]}
+            >
+              <Text style={[styles.retryTxt, { color: theme.text }]}>Try again</Text>
+            </Pressable>
+          </View>
+        ) : days.length === 0 ? (
+          <View style={styles.center}>
+            <Text style={[styles.errorTitle, { color: theme.text }]}>
+              No matches scheduled
+            </Text>
+            <Text style={[styles.errorMsg, { color: theme.text2 }]}>
+              Check back soon — matches load 7 days ahead.
+            </Text>
+          </View>
+        ) : (
+          Object.entries(grouped).map(([league, matches]) => (
+            <View key={league} style={{ marginBottom: 18 }}>
+              <Text style={[styles.leagueLabel, { color: theme.text3 }]}>
+                {league.toUpperCase()}
+              </Text>
+              <View style={{ gap: 8 }}>
+                {matches.map((m) => (
+                  <MatchRow key={m.id} match={m} pick={picks[m.id] ?? null} onPick={setPick} />
+                ))}
+              </View>
+            </View>
+          ))
+        )}
       </ScrollView>
 
       {pickCount > 0 ? (
@@ -98,14 +177,14 @@ export default function MatchesScreen() {
                 {pickCount} pick{pickCount > 1 ? 's' : ''} on your slip
               </Text>
               <Text style={[styles.bottomSub, { color: theme.text2 }]}>
-                {ticketsLeft > 0 ? 'Ready when you are' : 'Buy a ticket to submit'}
+                {canCreateTicket ? 'Ready when you are' : 'Out of tickets'}
               </Text>
             </View>
             <Pressable
-              onPress={() => router.push(ticketsLeft > 0 ? '/review' : '/paywall')}
+              onPress={() => router.push(canCreateTicket ? '/review' : '/paywall')}
               style={[styles.cta, { backgroundColor: theme.neon }]}
             >
-              <Text style={styles.ctaTxt}>{ticketsLeft > 0 ? 'Review' : 'Get ticket'} →</Text>
+              <Text style={styles.ctaTxt}>{canCreateTicket ? 'Review' : 'Get ticket'} →</Text>
             </Pressable>
           </View>
         </View>
@@ -136,11 +215,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   daysRow: {
-    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexGrow: 0,
+  },
+  daysRowContent: {
     gap: 6,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   dayBtn: {
     flexDirection: 'row',
@@ -166,6 +247,38 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 8,
     paddingLeft: 2,
+  },
+  center: {
+    paddingTop: 80,
+    alignItems: 'center',
+    gap: 10,
+  },
+  centerHint: {
+    fontFamily: Fonts.monoMedium,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    marginTop: 6,
+  },
+  errorTitle: {
+    fontFamily: Fonts.dispBold,
+    fontSize: 16,
+  },
+  errorMsg: {
+    fontFamily: Fonts.uiRegular,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+  retry: {
+    marginTop: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  retryTxt: {
+    fontFamily: Fonts.dispBold,
+    fontSize: 13,
   },
   bottomBar: {
     position: 'absolute',

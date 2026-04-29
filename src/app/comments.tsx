@@ -14,21 +14,20 @@ import {
 import { Avatar } from '@/components/atoms/Avatar';
 import { BottomSheet } from '@/components/sheets/BottomSheet';
 import { COMMENTS } from '@/data/comments';
-import { POSTS } from '@/data/posts';
 import { USERS } from '@/data/users';
-import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
 
 export default function CommentsScreen() {
   const theme = useTheme();
   const { postId } = useLocalSearchParams<{ postId: string }>();
-  const { posts } = useAppState();
-  const post = posts.find((p) => p.id === postId) ?? POSTS.find((p) => p.id === postId);
+  // Backend-driven comment threads aren't wired in this round; we render the
+  // sheet against the static COMMENTS map so legacy mock postIds still show
+  // their thread, and live-feed postIds open with an empty list.
   const comments = postId ? COMMENTS[postId] ?? [] : [];
   const [text, setText] = useState('');
 
-  if (!post) return null;
+  if (!postId) return null;
 
   const title = (
     <Text style={{ color: theme.text, fontFamily: Fonts.dispBold, fontSize: 16 }}>

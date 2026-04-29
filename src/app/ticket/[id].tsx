@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '@/components/atoms/Avatar';
 import { Icon } from '@/components/atoms/Icon';
@@ -7,20 +7,21 @@ import { ScreenHeader } from '@/components/nav/ScreenHeader';
 import { COMMENTS } from '@/data/comments';
 import { fixtureMap } from '@/data/fixtures';
 import { PAST_PREDICTIONS, PAST_TICKETS } from '@/data/leaderboard';
-import { POSTS } from '@/data/posts';
 import { TEAMS } from '@/data/teams';
 import { USERS } from '@/data/users';
+import { useTicket } from '@/hooks/useTicket';
 import { withAlpha } from '@/lib/colors';
 import { multiplyOdds } from '@/lib/format';
+import { getMatch } from '@/lib/matchCache';
 import {
   legStatusColor,
   statusGlyph,
   ticketStatusColor,
   ticketStatusLabel,
 } from '@/lib/status';
-import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
+import type { Fixture, Leg, TicketStatus } from '@/types/domain';
 
 interface ViewModelLeg {
   league: string;
@@ -33,56 +34,59 @@ interface ViewModelLeg {
   result?: string;
 }
 
+function resolveFixture(leg: Leg): Fixture | undefined {
+  return leg.fixture ?? getMatch(leg.matchId) ?? fixtureMap[leg.matchId];
+}
+
 export default function TicketDetailScreen() {
   const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { posts } = useAppState();
+  const ticketId = id ?? '';
 
-  const post = posts.find((p) => p.ticket.id === id) ?? POSTS.find((p) => p.ticket.id === id);
-  const past = !post && PAST_TICKETS.find((t) => t.id === id);
+  // Past mock tickets are kept as a fallback so legacy navigation from the
+  // leaderboard / profile (which still use mock data) keeps working until
+  // those screens are migrated.
+  const past = PAST_TICKETS.find((t) => t.id === ticketId);
+  const fetchEnabled = !past && Boolean(ticketId);
 
-  if (!post && !past) {
-    return (
-      <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <ScreenHeader title="Slip" />
-        <Text style={{ textAlign: 'center', marginTop: 80, color: theme.text, fontFamily: Fonts.dispBold }}>
-          Ticket not found
-        </Text>
-      </View>
-    );
-  }
+  const { ticket, raw, createdAtRelative, loading, error } = useTicket(
+    fetchEnabled ? ticketId : null,
+  );
+  const authorUsername = raw?.user?.username ?? null;
+  const authorAvatarUrl = raw?.user?.avatarUrl ?? null;
 
   let legs: ViewModelLeg[] = [];
-  let statusKey: 'won' | 'lost' | 'pending' = 'pending';
+  let statusKey: TicketStatus = 'pending';
   let multiplier = 0;
   let dateLabel = '';
   let points = 0;
   let stake = 0;
   let caption: string | undefined;
   let postId: string | null = null;
-  const u = post ? USERS[post.userId] : USERS.u1;
+  let displayName: string | undefined;
+  let displayAvatarUrl: string | null = null;
 
-  if (post) {
-    legs = post.ticket.legs.map((l) => {
-      const f = fixtureMap[l.matchId];
+  if (ticket && raw) {
+    legs = ticket.legs.map((l) => {
+      const f = resolveFixture(l);
       return {
-        league: f.league,
-        home: f.home,
-        away: f.away,
-        kickoff: f.kickoff,
+        league: f?.league ?? 'Match',
+        home: f?.home ?? 'HOM',
+        away: f?.away ?? 'AWY',
+        kickoff: f?.kickoff ?? '',
         pick: l.pick,
-        odds: f.odds[l.pick],
+        odds: f?.odds[l.pick] ?? 1,
         status: l.status ?? 'pending',
         result: l.result,
       };
     });
-    statusKey = post.ticket.status;
+    statusKey = ticket.status;
     multiplier = multiplyOdds(legs.map((l) => l.odds));
-    dateLabel = `${post.timeAgo} ago`;
-    points = post.ticket.potential;
-    stake = post.ticket.stake ?? 100;
-    caption = post.caption;
-    postId = post.id;
+    dateLabel = createdAtRelative ? `${createdAtRelative} ago` : '';
+    points = ticket.potential;
+    stake = ticket.stake ?? 10;
+    displayName = authorUsername ?? undefined;
+    displayAvatarUrl = authorAvatarUrl;
   } else if (past) {
     legs = past.legIds
       .map((legId) => PAST_PREDICTIONS.find((p) => p.id === legId))
@@ -102,6 +106,34 @@ export default function TicketDetailScreen() {
     dateLabel = past.date;
     points = past.points;
     stake = past.stake;
+    displayName = USERS.u1?.name;
+  }
+
+  if (loading && !past) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <ScreenHeader title="Slip" />
+        <View style={styles.center}>
+          <ActivityIndicator color={theme.neon} />
+        </View>
+      </View>
+    );
+  }
+
+  if (!ticket && !past) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <ScreenHeader title="Slip" />
+        <View style={styles.center}>
+          <Text style={{ color: theme.text, fontFamily: Fonts.dispBold }}>
+            {error ? 'Could not load ticket' : 'Ticket not found'}
+          </Text>
+          {error ? (
+            <Text style={[styles.errorMsg, { color: theme.text2 }]}>{error.message}</Text>
+          ) : null}
+        </View>
+      </View>
+    );
   }
 
   const c = ticketStatusColor(theme, statusKey);
@@ -112,18 +144,39 @@ export default function TicketDetailScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ScreenHeader
-        title={`Slip · #${id?.toUpperCase()}`}
+        title={`Slip · #${ticketId.toUpperCase()}`}
         right={<Icon name="share" size={16} color={theme.text2} />}
       />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}>
         {/* Author */}
         <View style={styles.author}>
-          {u ? <Avatar user={u} size={42} /> : null}
+          {displayAvatarUrl || displayName ? (
+            <Avatar
+              user={{
+                id: 'ticket-author',
+                name: displayName ?? '?',
+                handle: displayName ?? '',
+                avatarHue: 200,
+                level: 1,
+                streak: 0,
+                friend: false,
+                wins: 0,
+                losses: 0,
+                tickets: 0,
+                hitRate: 0,
+              }}
+              size={42}
+            />
+          ) : null}
           <View style={{ flex: 1 }}>
-            <Text style={[styles.name, { color: theme.text }]}>{u?.name}</Text>
-            <Text style={[styles.handle, { color: theme.text3 }]}>
-              @{u?.handle} · LVL {u?.level} · {u?.hitRate}% HIT RATE
-            </Text>
+            <Text style={[styles.name, { color: theme.text }]}>{displayName ?? '—'}</Text>
+            {past ? (
+              <Text style={[styles.handle, { color: theme.text3 }]}>
+                @{USERS.u1?.handle} · LVL {USERS.u1?.level} · {USERS.u1?.hitRate}% HIT RATE
+              </Text>
+            ) : displayName ? (
+              <Text style={[styles.handle, { color: theme.text3 }]}>@{displayName}</Text>
+            ) : null}
           </View>
         </View>
 
@@ -247,6 +300,18 @@ export default function TicketDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  errorMsg: {
+    fontFamily: Fonts.uiRegular,
+    fontSize: 13,
+    paddingHorizontal: 32,
+    textAlign: 'center',
+  },
   author: {
     flexDirection: 'row',
     alignItems: 'center',

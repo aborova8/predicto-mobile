@@ -17,8 +17,8 @@ interface MatchRowProps {
 
 export function MatchRow({ match, pick, onPick, locked }: MatchRowProps) {
   const theme = useTheme();
-  const home = TEAMS[match.home];
-  const away = TEAMS[match.away];
+  const homeName = match.homeName ?? TEAMS[match.home]?.name ?? match.home;
+  const awayName = match.awayName ?? TEAMS[match.away]?.name ?? match.away;
 
   return (
     <View
@@ -37,7 +37,7 @@ export function MatchRow({ match, pick, onPick, locked }: MatchRowProps) {
       <View style={styles.mid}>
         <Crest team={match.home} size={26} />
         <Text style={[styles.teams, { color: theme.text }]} numberOfLines={1}>
-          {home.name} <Text style={{ color: theme.text3, fontFamily: Fonts.dispMedium }}>vs</Text> {away.name}
+          {homeName} <Text style={{ color: theme.text3, fontFamily: Fonts.dispMedium }}>vs</Text> {awayName}
         </Text>
         <Crest team={match.away} size={26} />
       </View>

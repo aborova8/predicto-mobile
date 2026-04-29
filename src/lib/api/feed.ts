@@ -1,0 +1,26 @@
+import { api, buildQuery } from '@/lib/api';
+import type { BackendFeedItem, FeedScope } from '@/types/domain';
+
+export type { FeedScope } from '@/types/domain';
+
+export type ListFeedQuery = {
+  scope?: FeedScope;
+  cursor?: string;
+  limit?: number;
+};
+
+export function listFeed(
+  q: ListFeedQuery = {},
+): Promise<{ items: BackendFeedItem[]; nextCursor: string | null }> {
+  return api.get<{ items: BackendFeedItem[]; nextCursor: string | null }>(
+    `/api/feed${buildQuery(q)}`,
+  );
+}
+
+export function likePost(postId: string): Promise<{ ok: true }> {
+  return api.post<{ ok: true }>(`/api/feed/posts/${encodeURIComponent(postId)}/like`);
+}
+
+export function unlikePost(postId: string): Promise<{ ok: true }> {
+  return api.delete<{ ok: true }>(`/api/feed/posts/${encodeURIComponent(postId)}/like`);
+}

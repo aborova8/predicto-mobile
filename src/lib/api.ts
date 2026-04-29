@@ -119,7 +119,25 @@ export const api = {
     request<T>(path, { ...opts, method: 'POST', body }),
   postForm: <T>(path: string, formData: FormData, opts?: Omit<RequestOpts, 'method' | 'body' | 'formData'>) =>
     request<T>(path, { ...opts, method: 'POST', formData }),
+  put: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body' | 'formData'>) =>
+    request<T>(path, { ...opts, method: 'PUT', body }),
+  patch: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body' | 'formData'>) =>
+    request<T>(path, { ...opts, method: 'PATCH', body }),
+  delete: <T>(path: string, opts?: Omit<RequestOpts, 'method' | 'body' | 'formData'>) =>
+    request<T>(path, { ...opts, method: 'DELETE' }),
 };
+
+type QueryValue = string | number | boolean | Date | null | undefined;
+
+export function buildQuery(params: { [key: string]: QueryValue }): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null) continue;
+    const serialized = value instanceof Date ? value.toISOString() : String(value);
+    parts.push(`${key}=${encodeURIComponent(serialized)}`);
+  }
+  return parts.length ? `?${parts.join('&')}` : '';
+}
 
 export function errorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError && err.message) return err.message;

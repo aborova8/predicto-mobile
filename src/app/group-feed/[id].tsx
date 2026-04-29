@@ -8,7 +8,6 @@ import { FeedPostCard } from '@/components/feed/FeedPostCard';
 import { GROUPS, GROUP_POSTS } from '@/data/groups';
 import { POSTS } from '@/data/posts';
 import { withAlpha } from '@/lib/colors';
-import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
 
@@ -17,7 +16,6 @@ export default function GroupFeedScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { likePost } = useAppState();
   const g = GROUPS.find((x) => x.id === id) ?? GROUPS[0];
   const postIds = GROUP_POSTS[g.id] ?? ['p1', 'p3', 'p5'];
   const groupPosts = postIds.map((pid) => POSTS.find((p) => p.id === pid)).filter((p): p is NonNullable<typeof p> => Boolean(p));
@@ -60,7 +58,7 @@ export default function GroupFeedScreen() {
             <FeedPostCard
               key={post.id}
               post={post}
-              onLike={likePost}
+              onLike={() => {}}
               onComment={(pid) => router.push({ pathname: '/comments', params: { postId: pid } })}
               onShare={() => {}}
               onTicketPress={(tid) => router.push(`/ticket/${tid}`)}

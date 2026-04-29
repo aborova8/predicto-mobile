@@ -6,7 +6,6 @@ import { Icon } from '@/components/atoms/Icon';
 import { NeonButton } from '@/components/atoms/NeonButton';
 import { Pill } from '@/components/atoms/Pill';
 import { BottomSheet } from '@/components/sheets/BottomSheet';
-import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
 
@@ -27,12 +26,12 @@ const PACKS = [
 export default function PaywallScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { buyTickets } = useAppState();
   const [selected, setSelected] = useState('pack5');
 
   const onPurchase = () => {
-    const pack = PACKS.find((p) => p.id === selected);
-    if (pack) buyTickets(pack.n);
+    // IAP integration is wired through the dedicated /api/iap endpoints; the
+    // mobile-side purchase flow lives in a separate ticket. This sheet is the
+    // entry point — close it and return the user to whatever they were doing.
     router.back();
   };
 

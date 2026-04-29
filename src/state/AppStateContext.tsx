@@ -10,15 +10,18 @@ import {
   type PropsWithChildren,
 } from 'react';
 
-import { POSTS } from '@/data/posts';
-import { calculateTotalOdds } from '@/lib/format';
 import { configureApi } from '@/lib/api';
+import { createTicket } from '@/lib/api/tickets';
 import * as authApi from '@/lib/auth/api';
 import * as authStorage from '@/lib/auth/storage';
-import type { AuthUser, FeedLayout, Pick, Post, TicketVariant } from '@/types/domain';
+import { predictionFromPick } from '@/lib/mappers';
+import type { AuthUser, FeedLayout, FeedScope, Pick, TicketVariant } from '@/types/domain';
 
 type Picks = Record<string, Pick | null>;
-type FeedFilter = 'global' | 'friends';
+
+interface SubmitTicketOptions {
+  caption?: string;
+}
 
 interface AppStateCtx {
   // ── Auth ────────────────────────────────────────────────────────────────
@@ -36,30 +39,22 @@ interface AppStateCtx {
   verifyPasswordResetCode: (email: string, code: string) => Promise<void>;
   confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<void>;
 
-  // ── Feed / picks / ticket prefs (unchanged) ────────────────────────────
-  posts: Post[];
-  setPosts: (p: Post[]) => void;
-  likePost: (postId: string) => void;
-
+  // ── Picks / slip in progress ────────────────────────────────────────────
   picks: Picks;
   setPick: (matchId: string, pick: Pick | null) => void;
   clearPicks: () => void;
   pickCount: number;
+  submitTicket: (opts?: SubmitTicketOptions) => Promise<{ ticketId: string }>;
 
-  ticketsLeft: number;
-  setTicketsLeft: (n: number) => void;
-  buyTickets: (n: number) => void;
-
-  filter: FeedFilter;
-  setFilter: (f: FeedFilter) => void;
+  // ── UI prefs ────────────────────────────────────────────────────────────
+  filter: FeedScope;
+  setFilter: (f: FeedScope) => void;
 
   ticketVariant: TicketVariant;
   setTicketVariant: (v: TicketVariant) => void;
 
   feedLayout: FeedLayout;
   setFeedLayout: (v: FeedLayout) => void;
-
-  submitSlip: () => void;
 }
 
 const AppStateContext = createContext<AppStateCtx | null>(null);
@@ -92,11 +87,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   // latest value without re-running configureApi on every change.
   const tokenRef = useRef<string | null>(null);
 
-  // ── Feed / picks (unchanged) ──────────────────────────────────────────────
-  const [posts, setPosts] = useState<Post[]>(POSTS);
+  // ── Picks / UI prefs ──────────────────────────────────────────────────────
   const [picks, setPicks] = useState<Picks>({});
-  const [ticketsLeft, setTicketsLeft] = useState(1);
-  const [filter, setFilter] = useState<FeedFilter>('global');
+  const [filter, setFilter] = useState<FeedScope>('global');
   const [ticketVariant, setTicketVariantState] = useState<TicketVariant>('slip');
   const [feedLayout, setFeedLayoutState] = useState<FeedLayout>('card');
 
@@ -239,21 +232,6 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     [],
   );
 
-  const likePost = useCallback((postId: string) => {
-    setPosts((prev) => {
-      const idx = prev.findIndex((p) => p.id === postId);
-      if (idx === -1) return prev;
-      const target = prev[idx];
-      const next = prev.slice();
-      next[idx] = {
-        ...target,
-        liked: !target.liked,
-        likes: target.liked ? target.likes - 1 : target.likes + 1,
-      };
-      return next;
-    });
-  }, []);
-
   const setPick = useCallback((matchId: string, pick: Pick | null) => {
     setPicks((prev) => {
       if ((prev[matchId] ?? null) === pick) return prev;
@@ -263,36 +241,29 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
   const clearPicks = useCallback(() => setPicks({}), []);
 
-  const buyTickets = useCallback((n: number) => {
-    setTicketsLeft((prev) => prev + n);
-  }, []);
-
-  const submitSlip = useCallback(() => {
-    setTicketsLeft(0);
-    const legs = Object.entries(picks)
-      .filter((entry): entry is [string, Pick] => entry[1] !== null && entry[1] !== undefined)
-      .map(([matchId, pick]) => ({ matchId, pick }));
-    if (legs.length === 0) return;
-    const totalOdds = calculateTotalOdds(legs);
-    const newPost: Post = {
-      id: `p_new_${Date.now()}`,
-      userId: 'u1',
-      timeAgo: 'now',
-      likes: 0,
-      liked: false,
-      comments: 0,
-      caption: "Just locked it in. Let's ride.",
-      ticket: {
-        id: `tnew_${Date.now()}`,
-        stake: 10,
-        status: 'pending',
-        potential: Math.round(10 * totalOdds),
-        legs,
-      },
-    };
-    setPosts((prev) => [newPost, ...prev]);
-    setPicks({});
-  }, [picks]);
+  const submitTicket = useCallback(
+    async (opts: SubmitTicketOptions = {}) => {
+      const items = Object.entries(picks).filter(
+        (entry): entry is [string, Pick] => entry[1] !== null && entry[1] !== undefined,
+      );
+      if (items.length === 0) {
+        throw new Error('Pick at least one match before submitting.');
+      }
+      const payload = {
+        picks: items.map(([matchId, pick]) => ({
+          matchId,
+          prediction: predictionFromPick(pick),
+        })),
+        caption: opts.caption,
+      };
+      const { ticket } = await createTicket(payload);
+      setPicks({});
+      // Refresh the cached user (livesBalance / points may have shifted).
+      void refreshUser().catch(() => {});
+      return { ticketId: ticket.id };
+    },
+    [picks, refreshUser],
+  );
 
   const pickCount = useMemo(
     () => Object.values(picks).filter((p) => p !== null && p !== undefined).length,
@@ -317,21 +288,18 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       verifyPasswordResetCode,
       confirmPasswordReset,
 
-      posts, setPosts, likePost,
-      picks, setPick, clearPicks, pickCount,
-      ticketsLeft, setTicketsLeft, buyTickets,
+      picks, setPick, clearPicks, pickCount, submitTicket,
       filter, setFilter,
       ticketVariant, setTicketVariant,
       feedLayout, setFeedLayout,
-      submitSlip,
     }),
     [
       authed, authLoading, user, token,
       signIn, signUp, signInWithGoogle, signInWithApple, signOut, refreshUser,
       requestPasswordReset, verifyPasswordResetCode, confirmPasswordReset,
-      posts, likePost, picks, setPick, clearPicks, pickCount,
-      ticketsLeft, buyTickets, filter, ticketVariant, setTicketVariant,
-      feedLayout, setFeedLayout, submitSlip,
+      picks, setPick, clearPicks, pickCount, submitTicket,
+      filter, ticketVariant, setTicketVariant,
+      feedLayout, setFeedLayout,
     ],
   );
 

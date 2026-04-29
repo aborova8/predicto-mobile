@@ -6,6 +6,7 @@ import { TEAMS } from '@/data/teams';
 import { fixtureMap } from '@/data/fixtures';
 import { withAlpha } from '@/lib/colors';
 import { calculateTotalOdds, fmtOdds } from '@/lib/format';
+import { getMatch } from '@/lib/matchCache';
 import { legStatusColor, statusGlyph, ticketBannerLabel, ticketStatusColor } from '@/lib/status';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
@@ -53,7 +54,7 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
 
       <View style={{ paddingHorizontal: 14, paddingBottom: 12 }}>
         {ticket.legs.map((leg, i) => {
-          const f = fixtureMap[leg.matchId];
+          const f = leg.fixture ?? getMatch(leg.matchId) ?? fixtureMap[leg.matchId];
           if (!f) return null;
           const isLast = i === ticket.legs.length - 1;
           const ls = leg.status;
@@ -89,9 +90,9 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
                     <Text style={[styles.legGlyph, { color: accent ?? theme.text }]}>{glyph}</Text>
                   ) : null}
                   <Text style={[styles.teamLineTxt, { color: accent ?? theme.text }]} numberOfLines={1}>
-                    {TEAMS[f.home].short}{' '}
+                    {TEAMS[f.home]?.short ?? f.home}{' '}
                     <Text style={{ color: theme.text3 }}>vs</Text>{' '}
-                    {TEAMS[f.away].short}
+                    {TEAMS[f.away]?.short ?? f.away}
                   </Text>
                 </View>
                 <Text style={[styles.metaLine, { color: theme.text3 }]} numberOfLines={1}>

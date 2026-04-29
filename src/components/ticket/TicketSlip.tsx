@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { TEAMS } from '@/data/teams';
 import { fixtureMap } from '@/data/fixtures';
 import { calculateTotalOdds, fmtOdds } from '@/lib/format';
+import { getMatch } from '@/lib/matchCache';
 import { statusGlyph, ticketBannerLabel } from '@/lib/status';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
@@ -52,7 +53,7 @@ export function TicketSlip({ ticket, onPress }: TicketSlipProps) {
 
       <View style={{ paddingTop: 8, paddingBottom: 4 }}>
         {ticket.legs.map((leg, i) => {
-          const f = fixtureMap[leg.matchId];
+          const f = leg.fixture ?? getMatch(leg.matchId) ?? fixtureMap[leg.matchId];
           if (!f) return null;
           const ls = leg.status;
           const wash =
@@ -87,9 +88,9 @@ export function TicketSlip({ ticket, onPress }: TicketSlipProps) {
                     <Text style={[styles.legGlyph, { color: glyphColor }]}>{glyph}</Text>
                   ) : null}
                   <Text style={styles.legTeamsTxt} numberOfLines={1}>
-                    {TEAMS[f.home].short}{' '}
+                    {TEAMS[f.home]?.short ?? f.home}{' '}
                     <Text style={{ color: '#999' }}>vs</Text>{' '}
-                    {TEAMS[f.away].short}
+                    {TEAMS[f.away]?.short ?? f.away}
                   </Text>
                 </View>
                 <View style={styles.legPickWrap}>

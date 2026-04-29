@@ -25,6 +25,10 @@ export interface Fixture {
   league: string;
   home: TeamCode;
   away: TeamCode;
+  // Full team names when known (populated from backend matches). Lets the UI
+  // show "Crystal Palace vs West Ham" for teams not in the static TEAMS dict.
+  homeName?: string;
+  awayName?: string;
   kickoff: string;
   day: number;
   odds: FixtureOdds;
@@ -68,6 +72,10 @@ export interface Leg {
   pick: Pick;
   status?: LegStatus;
   result?: string;
+  // Inlined fixture data when the leg is sourced from the backend (where each
+  // pick already carries its match). Falls back to fixtureMap / matchCache when
+  // absent so legacy mock posts keep rendering.
+  fixture?: Fixture;
 }
 
 export interface Ticket {
@@ -182,3 +190,89 @@ export interface AppNotification {
   sub?: string;
   meta?: string;
 }
+
+// ── Backend response shapes ─────────────────────────────────────────────────
+// These mirror the JSON returned by predicto-backend. Mappers in
+// `src/lib/mappers.ts` translate between these and the mobile UI types above.
+
+export type BackendPrediction = 'HOME' | 'DRAW' | 'AWAY';
+export type BackendMatchStatus = 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'POSTPONED' | 'CANCELLED';
+export type BackendMatchOutcome = 'HOME' | 'DRAW' | 'AWAY';
+export type BackendTicketStatus = 'PENDING' | 'WON' | 'LOST' | 'VOID';
+export type BackendTicketSource = 'FREE' | 'LIFE' | 'SUBSCRIPTION';
+
+export interface BackendMatch {
+  id: string;
+  externalId: string | null;
+  league: string;
+  homeTeam: string;
+  homeAbbrev: string | null;
+  homeLogo: string | null;
+  awayTeam: string;
+  awayAbbrev: string | null;
+  awayLogo: string | null;
+  kickoffAt: string;
+  status: BackendMatchStatus;
+  homeOdds: number;
+  drawOdds: number;
+  awayOdds: number;
+  homeWinPct: number | null;
+  drawPct: number | null;
+  awayWinPct: number | null;
+  homeScore: number | null;
+  awayScore: number | null;
+  result: BackendMatchOutcome | null;
+  fetchedAt: string;
+  resultsCheckedAt: string | null;
+}
+
+export interface BackendPick {
+  id: string;
+  ticketId: string;
+  matchId: string;
+  prediction: BackendPrediction;
+  oddsAtPick: number;
+  isCorrect: boolean | null;
+  match: BackendMatch;
+}
+
+export interface BackendTicket {
+  id: string;
+  userId: string;
+  status: BackendTicketStatus;
+  source: BackendTicketSource;
+  totalOdds: number;
+  pointsAwarded: number;
+  isLocked: boolean;
+  createdAt: string;
+  evaluatedAt: string | null;
+  picks: BackendPick[];
+  user?: { id: string; username: string; avatarUrl: string | null };
+}
+
+export interface BackendFeedAuthor {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+}
+
+export interface BackendFeedItem {
+  id: string;
+  caption: string | null;
+  createdAt: string;
+  author: BackendFeedAuthor;
+  ticket: BackendTicket;
+  counts: { likes: number; comments: number };
+  viewer: { liked: boolean };
+}
+
+export interface Eligibility {
+  hasActiveSubscription: boolean;
+  unlimitedTickets: boolean;
+  freeTicketsRemaining: number | null;
+  livesBalance: number;
+  canCreateTicket: boolean;
+  nextSource: BackendTicketSource | null;
+}
+
+export type FeedScope = 'global' | 'friends';
