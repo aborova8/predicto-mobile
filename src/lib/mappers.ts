@@ -1,14 +1,17 @@
+import { hslHex } from '@/lib/colors';
 import { setMatch } from '@/lib/matchCache';
 import type {
   BackendComment,
   BackendCommentCreated,
   BackendFeedItem,
+  BackendGroup,
   BackendMatch,
   BackendPick,
   BackendPrediction,
   BackendTicket,
   FeedComment,
   Fixture,
+  Group,
   Leg,
   LegStatus,
   Pick,
@@ -197,6 +200,41 @@ export function backendCommentToFeedComment(
     liked: c.viewer.liked,
     replies: c.children.map((child) => backendCommentToFeedComment(child, currentUserId, now)),
     isMine: currentUserId !== null && c.author.id === currentUserId,
+  };
+}
+
+// FNV-1a 32-bit hash. Stable across runs and platforms — same id always
+// produces the same hue, so a group's accent color stays consistent.
+function groupHueFromId(id: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i += 1) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return Math.abs(h) % 360;
+}
+
+export function groupColorFromId(id: string): string {
+  return hslHex(groupHueFromId(id), 70, 60);
+}
+
+export { groupHueFromId };
+
+export function backendGroupToGroup(g: BackendGroup): Group {
+  return {
+    id: g.id,
+    name: g.name,
+    description: g.description,
+    ownerId: g.ownerId,
+    visibility: g.visibility,
+    inviteCode: g.inviteCode,
+    avatarUrl: g.avatarUrl,
+    createdAt: g.createdAt,
+    memberCount: g._count?.members ?? 0,
+    // `scope=mine` returns `role`; single-group `getGroup` returns `viewerRole`.
+    viewerRole: g.viewerRole ?? g.role ?? null,
+    owner: g.owner,
+    color: groupColorFromId(g.id),
   };
 }
 

@@ -180,14 +180,53 @@ export interface FeedComment {
   isMine: boolean;
 }
 
+export type GroupVisibility = 'PUBLIC' | 'PRIVATE';
+export type GroupRole = 'OWNER' | 'ADMIN' | 'MEMBER';
+
 export interface Group {
   id: string;
   name: string;
-  members: number;
-  private: boolean;
+  description: string | null;
+  ownerId: string;
+  visibility: GroupVisibility;
+  // Present in list responses for PUBLIC groups, in detail when viewer is a
+  // member, and in any response for PRIVATE groups the viewer can see.
+  inviteCode?: string;
+  avatarUrl: string | null;
+  createdAt: string;
+  memberCount: number;
+  viewerRole: GroupRole | null;
+  owner?: PostAuthor;
+  // Mobile-only derived field. Stable per-group, hashed from id in the mapper —
+  // not round-tripped to the backend.
   color: string;
-  desc: string;
-  joined: boolean;
+}
+
+export interface GroupMember {
+  id: string;
+  groupId: string;
+  userId: string;
+  role: GroupRole;
+  joinedAt: string;
+  user: PostAuthor & { points: number };
+}
+
+export type JoinRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface GroupJoinRequest {
+  id: string;
+  groupId: string;
+  userId: string;
+  status: JoinRequestStatus;
+  createdAt: string;
+  user: PostAuthor;
+}
+
+export interface GroupLeaderboardEntry {
+  user: PostAuthor;
+  role: GroupRole;
+  points: number;
+  wins: number;
 }
 
 export interface Badge {
@@ -368,3 +407,19 @@ export interface Eligibility {
 }
 
 export type FeedScope = 'global' | 'friends';
+
+export interface BackendGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  ownerId: string;
+  visibility: GroupVisibility;
+  inviteCode?: string;
+  avatarUrl: string | null;
+  createdAt: string;
+  _count?: { members: number };
+  // `getGroup` returns this; `listGroups(scope:'mine')` returns `role` instead.
+  viewerRole?: GroupRole | null;
+  role?: GroupRole;
+  owner?: PostAuthor;
+}

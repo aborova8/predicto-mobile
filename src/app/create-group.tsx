@@ -2,6 +2,8 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,10 +15,17 @@ import {
 
 import { Icon } from '@/components/atoms/Icon';
 import { ScreenHeader } from '@/components/nav/ScreenHeader';
+import { errorMessage } from '@/lib/api';
+import { createGroup } from '@/lib/api/groups';
 import { withAlpha } from '@/lib/colors';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
 
+// The color picker is purely ephemeral UX — the chosen color is NOT sent to
+// the backend (which has no color field). After creation, the detail screen
+// renders a deterministic color derived from the assigned group id, so the
+// pick is lost on round-trip. Kept because a stark form is worse than a
+// short-lived flourish during creation.
 const COLORS = ['#EAFE3D', '#3DD9FE', '#FE3D8B', '#3DFE8B', '#FE9F3D', '#D93DFE', '#FE5C3D', '#3D7AFE'];
 
 export default function CreateGroupScreen() {
@@ -26,9 +35,28 @@ export default function CreateGroupScreen() {
   const [desc, setDesc] = useState('');
   const [color, setColor] = useState('#EAFE3D');
   const [isPrivate, setPrivate] = useState(false);
-  const [allowInvites, setAllowInvites] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const valid = name.trim().length >= 3;
+  // Backend Zod schema requires name 2..60 chars and description up to 500.
+  const trimmedName = name.trim();
+  const valid = trimmedName.length >= 2 && trimmedName.length <= 60 && !submitting;
+
+  const onSubmit = async () => {
+    if (!valid) return;
+    setSubmitting(true);
+    try {
+      const { group } = await createGroup({
+        name: trimmedName,
+        description: desc.trim() || undefined,
+        visibility: isPrivate ? 'PRIVATE' : 'PUBLIC',
+      });
+      router.replace(`/group/${group.id}`);
+    } catch (err) {
+      Alert.alert('Could not create group', errorMessage(err, 'Try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -41,11 +69,11 @@ export default function CreateGroupScreen() {
           style={[styles.preview, { borderColor: withAlpha(color, 0.33) }]}
         >
           <View style={[styles.crest, { backgroundColor: color }]}>
-            <Text style={styles.crestTxt}>{(name.trim()[0] ?? '?').toUpperCase()}</Text>
+            <Text style={styles.crestTxt}>{(trimmedName[0] ?? '?').toUpperCase()}</Text>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[styles.previewName, { color: theme.text }]} numberOfLines={1}>
-              {name.trim() || 'Group name'}
+              {trimmedName || 'Group name'}
             </Text>
             <Text style={[styles.previewMeta, { color: theme.text3 }]}>
               1 MEMBER · {isPrivate ? '🔒 PRIVATE' : 'PUBLIC'}
@@ -56,28 +84,30 @@ export default function CreateGroupScreen() {
         <FieldLabel>Name</FieldLabel>
         <TextInput
           value={name}
-          onChangeText={(t) => setName(t.slice(0, 28))}
+          onChangeText={(t) => setName(t.slice(0, 60))}
           placeholder="The Lads, Office FC…"
           placeholderTextColor={theme.text3}
+          editable={!submitting}
           style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.line, color: theme.text }]}
         />
-        <Text style={[styles.counter, { color: theme.text3 }]}>{name.length}/28</Text>
+        <Text style={[styles.counter, { color: theme.text3 }]}>{name.length}/60</Text>
 
         <View style={{ height: 14 }} />
         <FieldLabel>Description (optional)</FieldLabel>
         <TextInput
           value={desc}
-          onChangeText={(t) => setDesc(t.slice(0, 120))}
+          onChangeText={(t) => setDesc(t.slice(0, 500))}
           placeholder="Sunday league predictions, no analysis required."
           placeholderTextColor={theme.text3}
           multiline
           numberOfLines={3}
+          editable={!submitting}
           style={[
             styles.input,
             { backgroundColor: theme.surface, borderColor: theme.line, color: theme.text, minHeight: 80, textAlignVertical: 'top' },
           ]}
         />
-        <Text style={[styles.counter, { color: theme.text3 }]}>{desc.length}/120</Text>
+        <Text style={[styles.counter, { color: theme.text3 }]}>{desc.length}/500</Text>
 
         <View style={{ height: 18 }} />
         <FieldLabel>Group color</FieldLabel>
@@ -105,32 +135,25 @@ export default function CreateGroupScreen() {
         <View style={{ height: 22 }} />
         <FieldLabel>Settings</FieldLabel>
         <View style={[styles.toggleCard, { backgroundColor: theme.surface, borderColor: theme.line }]}>
-          <ToggleRow label="Private group" sub="Only people with the invite code can join" value={isPrivate} onChange={setPrivate} />
           <ToggleRow
-            label="Members can invite"
-            sub="Allow group members to send invites"
-            value={allowInvites}
-            onChange={setAllowInvites}
-            divided
+            label="Private group"
+            sub="Only people with the invite code can join. Requires an active subscription."
+            value={isPrivate}
+            onChange={setPrivate}
           />
         </View>
 
         {isPrivate ? (
           <View
             style={[
-              styles.codeCard,
+              styles.privacyNote,
               { backgroundColor: theme.neonDim, borderColor: withAlpha(theme.neon, 0.33) },
             ]}
           >
-            <View style={[styles.codeIcon, { backgroundColor: theme.bg }]}>
-              <Icon name="lock" size={14} color={theme.neon} stroke={2.4} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.codeLabel, { color: theme.text3 }]}>INVITE CODE</Text>
-              <Text style={[styles.codeValue, { color: theme.text }]}>
-                {(name.replace(/\s/g, '').toUpperCase().slice(0, 4) || 'XXXX')}-1337
-              </Text>
-            </View>
+            <Icon name="lock" size={14} color={theme.neon} stroke={2.4} />
+            <Text style={[styles.privacyText, { color: theme.text2 }]}>
+              You&apos;ll get an invite code after creating the group. Share it to grow your roster.
+            </Text>
           </View>
         ) : null}
       </ScrollView>
@@ -138,7 +161,7 @@ export default function CreateGroupScreen() {
       <View style={[styles.cta, { backgroundColor: theme.bg, borderTopColor: theme.lineSoft }]}>
         <Pressable
           disabled={!valid}
-          onPress={() => valid && router.back()}
+          onPress={onSubmit}
           style={[
             styles.ctaBtn,
             {
@@ -146,15 +169,21 @@ export default function CreateGroupScreen() {
             },
           ]}
         >
-          <Icon
-            name="plus"
-            size={16}
-            color={valid ? '#06091A' : theme.text3}
-            stroke={2.6}
-          />
-          <Text style={[styles.ctaTxt, { color: valid ? '#06091A' : theme.text3 }]}>
-            Create group
-          </Text>
+          {submitting ? (
+            <ActivityIndicator color="#06091A" />
+          ) : (
+            <>
+              <Icon
+                name="plus"
+                size={16}
+                color={valid ? '#06091A' : theme.text3}
+                stroke={2.6}
+              />
+              <Text style={[styles.ctaTxt, { color: valid ? '#06091A' : theme.text3 }]}>
+                Create group
+              </Text>
+            </>
+          )}
         </Pressable>
       </View>
     </View>
@@ -286,7 +315,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  codeCard: {
+  privacyNote: {
     marginTop: 14,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -296,23 +325,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  codeIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  codeLabel: {
-    fontFamily: Fonts.monoMedium,
-    fontSize: 10,
-    letterSpacing: 0.6,
-  },
-  codeValue: {
-    fontFamily: Fonts.monoBold,
-    fontSize: 15,
-    letterSpacing: 1.2,
-    marginTop: 2,
+  privacyText: {
+    flex: 1,
+    fontFamily: Fonts.uiRegular,
+    fontSize: 12,
+    lineHeight: 16,
   },
   cta: {
     paddingVertical: 12,

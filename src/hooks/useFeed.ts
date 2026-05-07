@@ -9,6 +9,7 @@ const PAGE_SIZE = 20;
 
 export interface UseFeedOptions {
   scope: FeedScope;
+  groupId?: string;
 }
 
 export interface UseFeedResult {
@@ -22,7 +23,7 @@ export interface UseFeedResult {
   like: (postId: string) => void;
 }
 
-export function useFeed({ scope }: UseFeedOptions): UseFeedResult {
+export function useFeed({ scope, groupId }: UseFeedOptions): UseFeedResult {
   const [posts, setPosts] = useState<Post[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -38,7 +39,7 @@ export function useFeed({ scope }: UseFeedOptions): UseFeedResult {
     setLoading(true);
     setError(null);
     try {
-      const { items, nextCursor } = await listFeed({ scope, limit: PAGE_SIZE });
+      const { items, nextCursor } = await listFeed({ scope, limit: PAGE_SIZE, groupId });
       if (reqRef.current !== reqId) return;
       const now = new Date();
       setPosts(items.map((it) => feedItemToPost(it, now)));
@@ -50,13 +51,13 @@ export function useFeed({ scope }: UseFeedOptions): UseFeedResult {
     } finally {
       if (reqRef.current === reqId) setLoading(false);
     }
-  }, [scope]);
+  }, [scope, groupId]);
 
   const fetchMore = useCallback(async () => {
     if (!hasMore || loadingMore || !cursor) return;
     setLoadingMore(true);
     try {
-      const { items, nextCursor } = await listFeed({ scope, cursor, limit: PAGE_SIZE });
+      const { items, nextCursor } = await listFeed({ scope, cursor, limit: PAGE_SIZE, groupId });
       const now = new Date();
       setPosts((prev) => [...prev, ...items.map((it) => feedItemToPost(it, now))]);
       setCursor(nextCursor);
@@ -66,7 +67,7 @@ export function useFeed({ scope }: UseFeedOptions): UseFeedResult {
     } finally {
       setLoadingMore(false);
     }
-  }, [scope, cursor, hasMore, loadingMore]);
+  }, [scope, cursor, hasMore, loadingMore, groupId]);
 
   useEffect(() => {
     void refetch();

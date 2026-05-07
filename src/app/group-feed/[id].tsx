@@ -1,12 +1,24 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/atoms/Icon';
 import { FeedPostCard } from '@/components/feed/FeedPostCard';
-import { GROUPS, GROUP_POSTS } from '@/data/groups';
-import { POSTS } from '@/data/posts';
+import { JoinByCodeSheet } from '@/components/groups/JoinByCodeSheet';
+import { useFeed } from '@/hooks/useFeed';
+import { useGroup } from '@/hooks/useGroup';
+import { useGroups } from '@/hooks/useGroups';
+import { ApiError, errorMessage } from '@/lib/api';
 import { withAlpha } from '@/lib/colors';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
@@ -16,14 +28,26 @@ export default function GroupFeedScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const g = GROUPS.find((x) => x.id === id) ?? GROUPS[0];
-  const postIds = GROUP_POSTS[g.id] ?? ['p1', 'p3', 'p5'];
-  const groupPosts = postIds.map((pid) => POSTS.find((p) => p.id === pid)).filter((p): p is NonNullable<typeof p> => Boolean(p));
+  const groupId = id ?? '';
+
+  const groupQ = useGroup(groupId);
+  const feed = useFeed({ scope: 'global', groupId });
+  const mineQ = useGroups({ scope: 'mine' });
+  const [joinOpen, setJoinOpen] = useState(false);
+
+  const onRefresh = async () => {
+    await Promise.all([groupQ.refetch(), feed.refetch()]);
+  };
+
+  const headerColor = groupQ.group?.color ?? theme.surface;
+  const groupName = groupQ.group?.name ?? 'Group';
+  const memberCount = groupQ.group?.memberCount ?? 0;
+  const isForbidden = feed.error instanceof ApiError && feed.error.status === 403;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <LinearGradient
-        colors={[withAlpha(g.color, 0.15), 'transparent']}
+        colors={[withAlpha(headerColor, 0.15), 'transparent']}
         locations={[0, 1]}
         style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: theme.lineSoft }]}
       >
@@ -33,40 +57,95 @@ export default function GroupFeedScreen() {
         >
           <Icon name="chevronL" size={18} color={theme.text2} />
         </Pressable>
-        <View style={[styles.crest, { backgroundColor: g.color }]}>
-          <Text style={styles.crestTxt}>{g.name[0]}</Text>
+        <View style={[styles.crest, { backgroundColor: headerColor }]}>
+          <Text style={styles.crestTxt}>{groupName[0]?.toUpperCase()}</Text>
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[styles.title, { color: theme.text }]}>{g.name}</Text>
+          <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
+            {groupName}
+          </Text>
           <Text style={[styles.meta, { color: theme.text3 }]}>
-            GROUP FEED · {g.members.toLocaleString()} MEMBERS
+            GROUP FEED · {memberCount.toLocaleString()} MEMBERS
           </Text>
         </View>
       </LinearGradient>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-        {groupPosts.length === 0 ? (
-          <View style={[styles.empty, { borderColor: theme.line }]}>
-            <Text style={{ fontSize: 36, marginBottom: 8 }}>📭</Text>
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>No slips yet today</Text>
-            <Text style={[styles.emptySub, { color: theme.text3 }]}>
-              BE THE FIRST IN {g.name.toUpperCase()}
-            </Text>
-          </View>
-        ) : (
-          groupPosts.map((post) => (
-            <FeedPostCard
-              key={post.id}
-              post={post}
-              onLike={() => {}}
-              onComment={(pid) => router.push({ pathname: '/comments', params: { postId: pid } })}
-              onShare={() => {}}
-              onTicketPress={(tid) => router.push(`/ticket/${tid}`)}
-              onOpenUser={(uid) => router.push(`/user/${uid}`)}
-            />
-          ))
+      <FlatList
+        data={feed.posts}
+        keyExtractor={(p) => p.id}
+        renderItem={({ item }) => (
+          <FeedPostCard
+            post={item}
+            onLike={feed.like}
+            onComment={(pid) => router.push({ pathname: '/comments', params: { postId: pid } })}
+            onShare={() => {}}
+            onTicketPress={(tid) => router.push(`/ticket/${tid}`)}
+            onOpenUser={(uid) => router.push(`/user/${uid}`)}
+          />
         )}
-      </ScrollView>
+        contentContainerStyle={{ paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl refreshing={feed.loading && feed.posts.length > 0} onRefresh={onRefresh} tintColor={theme.text2} />
+        }
+        onEndReachedThreshold={0.4}
+        onEndReached={() => void feed.fetchMore()}
+        ListEmptyComponent={
+          feed.loading ? (
+            <View style={{ paddingVertical: 60, alignItems: 'center' }}>
+              <ActivityIndicator color={theme.text2} />
+            </View>
+          ) : isForbidden ? (
+            <View style={[styles.empty, { borderColor: theme.line }]}>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>This group is private</Text>
+              <Text style={[styles.emptySub, { color: theme.text2 }]}>
+                Join with an invite code to see the slips members are posting.
+              </Text>
+              <Pressable
+                onPress={() => setJoinOpen(true)}
+                style={[styles.joinBtn, { backgroundColor: theme.neon }]}
+              >
+                <Text style={styles.joinBtnTxt}>Join with invite code</Text>
+              </Pressable>
+            </View>
+          ) : feed.error ? (
+            <View style={[styles.empty, { borderColor: theme.line }]}>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>Could not load feed</Text>
+              <Text style={[styles.emptySub, { color: theme.text3 }]}>
+                {errorMessage(feed.error, 'Try again.').toUpperCase()}
+              </Text>
+              <Pressable onPress={onRefresh} style={[styles.retryBtn, { borderColor: theme.neon }]}>
+                <Text style={[styles.retryTxt, { color: theme.neon }]}>RETRY</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={[styles.empty, { borderColor: theme.line }]}>
+              <Text style={{ fontSize: 36, marginBottom: 8 }}>📭</Text>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>No slips yet</Text>
+              <Text style={[styles.emptySub, { color: theme.text3 }]}>
+                BE THE FIRST IN {groupName.toUpperCase()}
+              </Text>
+            </View>
+          )
+        }
+        ListFooterComponent={
+          feed.loadingMore ? (
+            <View style={{ paddingVertical: 18, alignItems: 'center' }}>
+              <ActivityIndicator color={theme.text2} />
+            </View>
+          ) : null
+        }
+      />
+
+      <JoinByCodeSheet
+        open={joinOpen}
+        onClose={() => setJoinOpen(false)}
+        joinByCode={mineQ.joinByCode}
+        onResult={async (result) => {
+          if (result.joined || result.alreadyMember) {
+            await Promise.all([groupQ.refetch(), feed.refetch(), mineQ.refetch()]);
+          }
+        }}
+      />
     </View>
   );
 }
@@ -115,6 +194,7 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
     paddingHorizontal: 20,
     alignItems: 'center',
+    gap: 10,
     borderWidth: 1,
     borderStyle: 'dashed',
     borderRadius: 16,
@@ -124,9 +204,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   emptySub: {
-    fontFamily: Fonts.monoMedium,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    marginTop: 6,
+    fontFamily: Fonts.uiRegular,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  joinBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginTop: 8,
+  },
+  joinBtnTxt: {
+    fontFamily: Fonts.dispBold,
+    fontSize: 13,
+    color: '#06091A',
+  },
+  retryBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  retryTxt: {
+    fontFamily: Fonts.dispBold,
+    fontSize: 12,
+    letterSpacing: 1.4,
   },
 });

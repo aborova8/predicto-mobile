@@ -13,9 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/atoms/Avatar';
 import { Icon } from '@/components/atoms/Icon';
 import { FIXTURES } from '@/data/fixtures';
-import { GROUPS } from '@/data/groups';
 import { TEAMS } from '@/data/teams';
 import { USERS } from '@/data/users';
+import { useGroups } from '@/hooks/useGroups';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
 
@@ -32,6 +32,11 @@ export default function SearchScreen() {
   const [scope, setScope] = useState<Scope>('all');
   const inputRef = useRef<TextInput>(null);
 
+  // Backend has no group-search endpoint, but `scope=public` returns up to 100
+  // groups and we filter client-side. The list is silently absent if loading
+  // fails — we don't want a network blip to block users/matches search.
+  const publicGroups = useGroups({ scope: 'public' });
+
   useEffect(() => {
     const t = setTimeout(() => inputRef.current?.focus(), 200);
     return () => clearTimeout(t);
@@ -45,7 +50,7 @@ export default function SearchScreen() {
       userResults: Object.values(USERS).filter(
         (u) => !u.isMe && (has(u.name) || has(u.handle)),
       ),
-      groupResults: GROUPS.filter((g) => has(g.name) || has(g.desc)),
+      groupResults: publicGroups.groups.filter((g) => has(g.name) || has(g.description ?? '')),
       matchResults: FIXTURES.filter(
         (m) =>
           has(TEAMS[m.home]?.name ?? '') ||
@@ -55,7 +60,7 @@ export default function SearchScreen() {
           has(m.league),
       ),
     };
-  }, [q]);
+  }, [q, publicGroups.groups]);
   const empty =
     q && userResults.length === 0 && groupResults.length === 0 && matchResults.length === 0;
   const showSection = (k: Scope) => scope === 'all' || scope === k;
@@ -193,12 +198,12 @@ export default function SearchScreen() {
                 {groupResults.map((g) => (
                   <Pressable key={g.id} onPress={() => router.push(`/group/${g.id}`)} style={styles.row}>
                     <View style={[styles.groupBadge, { backgroundColor: g.color }]}>
-                      <Text style={styles.groupBadgeTxt}>{g.name[0]}</Text>
+                      <Text style={styles.groupBadgeTxt}>{g.name[0]?.toUpperCase()}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.rowTitle, { color: theme.text }]}>{g.name}</Text>
                       <Text style={[styles.rowMeta, { color: theme.text3 }]}>
-                        {g.members.toLocaleString()} MEMBERS{g.private ? ' · 🔒 PRIVATE' : ''}
+                        {g.memberCount.toLocaleString()} MEMBERS{g.visibility === 'PRIVATE' ? ' · 🔒 PRIVATE' : ''}
                       </Text>
                     </View>
                     <Icon name="chevron" size={14} color={theme.text3} />
