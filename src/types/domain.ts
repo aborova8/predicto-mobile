@@ -239,14 +239,22 @@ export interface Badge {
   max?: number;
 }
 
+export type LeaderboardScope = 'global' | 'friends';
+export type LeaderboardBoard = 'points' | 'streak' | 'bigOdds';
+
 export interface LeaderboardEntry {
-  userId: string;
+  rank: number;
+  user: PostAuthor;
   points: number;
-  bigOdds: number;
   streak: number;
-  change: number;
-  friend: boolean;
-  isMe?: boolean;
+  bigOdds: number;
+  wins: number;
+  ticketsPlayed: number;
+}
+
+export interface LeaderboardResponse {
+  items: LeaderboardEntry[];
+  viewer: LeaderboardEntry | null;
 }
 
 export interface PastTicket {

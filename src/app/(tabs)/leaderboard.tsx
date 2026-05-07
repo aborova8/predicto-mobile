@@ -1,158 +1,236 @@
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/atoms/Avatar';
-import { LEADERBOARD } from '@/data/leaderboard';
-import { USERS } from '@/data/users';
+import { GroupPickerSheet } from '@/components/leaderboard/GroupPickerSheet';
+import { useLeaderboard } from '@/hooks/useLeaderboard';
 import { withAlpha } from '@/lib/colors';
+import { fmtOdds } from '@/lib/format';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
-import type { LeaderboardEntry } from '@/types/domain';
+import type { LeaderboardBoard, LeaderboardEntry, LeaderboardScope } from '@/types/domain';
 
-type Board = 'points' | 'bigOdds' | 'streak';
-type Scope = 'global' | 'friends' | 'groups';
-
-const BOARDS: { id: Board; label: string; unit: string; fmt: (v: number) => string }[] = [
-  { id: 'points', label: 'Points', unit: 'PTS', fmt: (v) => v.toLocaleString() },
-  { id: 'bigOdds', label: 'Big Win', unit: '× ODDS', fmt: (v) => `${v.toFixed(2)}×` },
-  { id: 'streak', label: 'Streak', unit: 'IN A ROW', fmt: (v) => `${v} 🔥` },
+const BOARDS: { id: LeaderboardBoard; label: string }[] = [
+  { id: 'points', label: 'Points' },
+  { id: 'bigOdds', label: 'Big Win' },
+  { id: 'streak', label: 'Streak' },
 ];
 
-const SUBTITLES: Record<Board, string> = {
-  points: 'Season closes in 14 days.',
-  bigOdds: 'Biggest cashed ticket this season.',
+const VALUES: Record<LeaderboardBoard, { unit: string; fmt: (e: LeaderboardEntry) => string }> = {
+  points: { unit: 'PTS', fmt: (e) => e.points.toLocaleString() },
+  streak: { unit: 'IN A ROW', fmt: (e) => `${e.streak} 🔥` },
+  bigOdds: { unit: '× ODDS', fmt: (e) => `${fmtOdds(e.bigOdds)}×` },
+};
+
+const SUBTITLES: Record<LeaderboardBoard, string> = {
+  points: 'All-time points leaders.',
+  bigOdds: 'Biggest cashed ticket.',
   streak: 'Consecutive winning tickets.',
 };
+
+const SCOPES: { id: LeaderboardScope | 'groups'; label: string }[] = [
+  { id: 'global', label: 'global' },
+  { id: 'friends', label: 'friends' },
+  { id: 'groups', label: 'groups' },
+];
+
+function hitRate(e: LeaderboardEntry): number {
+  return e.ticketsPlayed > 0 ? Math.round((e.wins / e.ticketsPlayed) * 100) : 0;
+}
 
 export default function LeaderboardScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [scope, setScope] = useState<Scope>('global');
-  const [board, setBoard] = useState<Board>('points');
-  const cfg = BOARDS.find((b) => b.id === board)!;
+  const [scope, setScope] = useState<LeaderboardScope>('global');
+  const [board, setBoard] = useState<LeaderboardBoard>('points');
+  const [showGroupPicker, setShowGroupPicker] = useState(false);
 
-  const rows = useMemo(() => {
-    const base = scope === 'friends' ? LEADERBOARD.filter((r) => r.friend || r.isMe) : LEADERBOARD;
-    return [...base]
-      .sort((a, b) => (b[board] as number) - (a[board] as number))
-      .map((r, i) => ({ ...r, rank: i + 1 }));
-  }, [scope, board]);
+  const { items, viewer, loading, error, refetch } = useLeaderboard(scope, board);
+  const cfg = VALUES[board];
+
+  const viewerInList = viewer ? items.some((i) => i.user.id === viewer.user.id) : false;
+  const showStickyViewer = !!viewer && !viewerInList;
+  const listRows = items.filter((i) => i.rank > 3);
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ paddingBottom: 120, paddingTop: insets.top + 6 }}
-    >
-      <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-        <Text style={[styles.h1, { color: theme.text }]}>Standings</Text>
-        <Text style={[styles.sub, { color: theme.text2 }]}>{SUBTITLES[board]}</Text>
+    <>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: theme.bg }}
+        contentContainerStyle={{ paddingBottom: 120, paddingTop: insets.top + 6 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading && items.length > 0}
+            onRefresh={refetch}
+            tintColor={theme.neon}
+          />
+        }
+      >
+        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+          <Text style={[styles.h1, { color: theme.text }]}>Standings</Text>
+          <Text style={[styles.sub, { color: theme.text2 }]}>{SUBTITLES[board]}</Text>
 
-        <View style={[styles.toggle, { backgroundColor: theme.surface, borderColor: theme.line }]}>
-          {BOARDS.map((b) => {
-            const a = b.id === board;
-            return (
-              <Pressable
-                key={b.id}
-                onPress={() => setBoard(b.id)}
-                style={[
-                  styles.toggleBtn,
-                  { backgroundColor: a ? theme.neon : 'transparent' },
-                ]}
-              >
-                <Text style={[styles.toggleTxt, { color: a ? '#06091A' : theme.text2 }]}>
-                  {b.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+          <View style={[styles.toggle, { backgroundColor: theme.surface, borderColor: theme.line }]}>
+            {BOARDS.map((b) => {
+              const a = b.id === board;
+              return (
+                <Pressable
+                  key={b.id}
+                  onPress={() => setBoard(b.id)}
+                  style={[styles.toggleBtn, { backgroundColor: a ? theme.neon : 'transparent' }]}
+                >
+                  <Text style={[styles.toggleTxt, { color: a ? '#06091A' : theme.text2 }]}>
+                    {b.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            {SCOPES.map((s) => {
+              const a = s.id !== 'groups' && s.id === scope;
+              return (
+                <Pressable
+                  key={s.id}
+                  onPress={() => {
+                    if (s.id === 'groups') setShowGroupPicker(true);
+                    else setScope(s.id);
+                  }}
+                  style={[
+                    styles.scopePill,
+                    {
+                      backgroundColor: a ? theme.text : 'transparent',
+                      borderColor: a ? theme.text : theme.line,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.scopeTxt, { color: a ? theme.bg : theme.text2 }]}>
+                    {s.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          {(['global', 'friends', 'groups'] as const).map((s) => {
-            const a = s === scope;
-            return (
-              <Pressable
-                key={s}
-                onPress={() => setScope(s)}
-                style={[
-                  styles.scopePill,
-                  {
-                    backgroundColor: a ? theme.text : 'transparent',
-                    borderColor: a ? theme.text : theme.line,
-                  },
-                ]}
-              >
-                <Text style={[styles.scopeTxt, { color: a ? theme.bg : theme.text2 }]}>{s}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
+        {loading && items.length === 0 ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={theme.neon} />
+          </View>
+        ) : error && items.length === 0 ? (
+          <View style={styles.center}>
+            <Text style={[styles.errorText, { color: theme.loss }]}>{error.message}</Text>
+            <Pressable onPress={refetch} style={[styles.retry, { borderColor: theme.line }]}>
+              <Text style={[styles.retryText, { color: theme.text }]}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : items.length === 0 ? (
+          <View style={styles.center}>
+            <Text style={[styles.emptyText, { color: theme.text2 }]}>No standings yet.</Text>
+          </View>
+        ) : (
+          <>
+            <Podium
+              rows={items}
+              cfg={cfg}
+              viewerId={viewer?.user.id ?? null}
+              onOpenUser={(id) => router.push(`/user/${id}`)}
+            />
 
-      <Podium rows={rows} board={board} cfg={cfg} onOpenUser={(id) => router.push(`/user/${id}`)} />
+            <View style={{ paddingHorizontal: 16, marginTop: 4 }}>
+              {listRows.map((r) => (
+                <Row
+                  key={r.user.id}
+                  entry={r}
+                  cfg={cfg}
+                  isMe={r.user.id === viewer?.user.id}
+                  onPress={() => router.push(`/user/${r.user.id}`)}
+                />
+              ))}
+            </View>
 
-      <View style={{ paddingHorizontal: 16, marginTop: 4 }}>
-        {rows
-          .filter((r) => r.rank > 3)
-          .map((r) => {
-            const u = USERS[r.userId];
-            if (!u) return null;
-            return (
-              <Pressable
-                key={r.userId}
-                onPress={() => router.push(`/user/${u.id}`)}
-                style={[
-                  styles.row,
-                  {
-                    backgroundColor: r.isMe ? theme.neonDim : theme.surface,
-                    borderColor: r.isMe ? withAlpha(theme.neon, 0.33) : theme.line,
-                  },
-                ]}
-              >
-                <Text style={[styles.rank, { color: theme.text2 }]}>{r.rank}</Text>
-                <Avatar user={u} size={36} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.rowName, { color: theme.text }]}>
-                    {u.name}
-                    {r.isMe ? <Text style={{ color: theme.neon, fontSize: 11 }}>  YOU</Text> : null}
-                  </Text>
-                  <Text style={[styles.rowMeta, { color: theme.text3 }]}>
-                    @{u.handle} · {u.hitRate}% HIT
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[styles.rowValue, { color: theme.text }]}>
-                    {cfg.fmt(r[board] as number)}
-                  </Text>
-                  <Text style={[styles.rowUnit, { color: theme.text3 }]}>{cfg.unit}</Text>
-                </View>
-              </Pressable>
-            );
-          })}
-      </View>
-    </ScrollView>
+            {showStickyViewer ? (
+              <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
+                <Text style={[styles.stickyLabel, { color: theme.text3 }]}>YOUR RANK</Text>
+                <Row
+                  entry={viewer!}
+                  cfg={cfg}
+                  isMe
+                  onPress={() => router.push(`/user/${viewer!.user.id}`)}
+                />
+              </View>
+            ) : null}
+          </>
+        )}
+      </ScrollView>
+
+      <GroupPickerSheet open={showGroupPicker} onClose={() => setShowGroupPicker(false)} />
+    </>
   );
 }
 
-function Podium({
-  rows,
-  cfg,
-  onOpenUser,
-  board,
-}: {
-  rows: (LeaderboardEntry & { rank: number })[];
-  cfg: (typeof BOARDS)[number];
+interface RowProps {
+  entry: LeaderboardEntry;
+  cfg: (typeof VALUES)[LeaderboardBoard];
+  isMe: boolean;
+  onPress: () => void;
+}
+
+function Row({ entry, cfg, isMe, onPress }: RowProps) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.row,
+        {
+          backgroundColor: isMe ? theme.neonDim : theme.surface,
+          borderColor: isMe ? withAlpha(theme.neon, 0.33) : theme.line,
+        },
+      ]}
+    >
+      <Text style={[styles.rank, { color: theme.text2 }]}>{entry.rank}</Text>
+      <Avatar author={entry.user} size={36} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.rowName, { color: theme.text }]}>
+          {entry.user.username}
+          {isMe ? <Text style={{ color: theme.neon, fontSize: 11 }}>  YOU</Text> : null}
+        </Text>
+        <Text style={[styles.rowMeta, { color: theme.text3 }]}>{hitRate(entry)}% HIT</Text>
+      </View>
+      <View style={{ alignItems: 'flex-end' }}>
+        <Text style={[styles.rowValue, { color: theme.text }]}>{cfg.fmt(entry)}</Text>
+        <Text style={[styles.rowUnit, { color: theme.text3 }]}>{cfg.unit}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+interface PodiumProps {
+  rows: LeaderboardEntry[];
+  cfg: (typeof VALUES)[LeaderboardBoard];
+  viewerId: string | null;
   onOpenUser: (id: string) => void;
-  board: Board;
-}) {
+}
+
+function Podium({ rows, cfg, viewerId, onOpenUser }: PodiumProps) {
   const theme = useTheme();
   const order: number[] = [2, 1, 3];
   const sizes: Record<number, number> = { 1: 56, 2: 44, 3: 44 };
   const heights: Record<number, number> = { 1: 80, 2: 56, 3: 40 };
+  const byRank = new Map(rows.map((r) => [r.rank, r]));
   return (
     <LinearGradient
       colors={[theme.surface, theme.neonDim]}
@@ -161,23 +239,21 @@ function Podium({
       style={[styles.podium, { borderColor: theme.line }]}
     >
       {order.map((rank) => {
-        const r = rows.find((x) => x.rank === rank);
+        const r = byRank.get(rank);
         if (!r) return null;
-        const u = USERS[r.userId];
-        if (!u) return null;
+        const isMe = r.user.id === viewerId;
         return (
           <Pressable
             key={rank}
-            onPress={() => onOpenUser(u.id)}
+            onPress={() => onOpenUser(r.user.id)}
             style={{ alignItems: 'center', gap: 6 }}
           >
-            <Avatar user={u} size={sizes[rank]} ring={rank === 1} />
-            <Text style={[styles.podiumName, { color: theme.text }]}>
-              {u.name.split(' ')[0]}
+            <Avatar author={r.user} size={sizes[rank]} ring={rank === 1} />
+            <Text style={[styles.podiumName, { color: theme.text }]} numberOfLines={1}>
+              {r.user.username}
+              {isMe ? <Text style={{ color: theme.neon }}> · YOU</Text> : null}
             </Text>
-            <Text style={[styles.podiumValue, { color: theme.neon }]}>
-              {cfg.fmt(r[board] as number)}
-            </Text>
+            <Text style={[styles.podiumValue, { color: theme.neon }]}>{cfg.fmt(r)}</Text>
             <View
               style={{
                 width: rank === 1 ? 56 : 44,
@@ -264,6 +340,7 @@ const styles = StyleSheet.create({
   podiumName: {
     fontFamily: Fonts.dispBold,
     fontSize: 12,
+    maxWidth: 80,
   },
   podiumValue: {
     fontFamily: Fonts.monoBold,
@@ -301,5 +378,36 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.monoMedium,
     fontSize: 9,
     letterSpacing: 0.5,
+  },
+  center: {
+    paddingVertical: 48,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    gap: 12,
+  },
+  errorText: {
+    fontFamily: Fonts.uiMedium,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  retry: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  retryText: {
+    fontFamily: Fonts.dispBold,
+    fontSize: 13,
+  },
+  emptyText: {
+    fontFamily: Fonts.uiRegular,
+    fontSize: 13,
+  },
+  stickyLabel: {
+    fontFamily: Fonts.monoBold,
+    fontSize: 10,
+    letterSpacing: 1,
+    marginBottom: 6,
   },
 });

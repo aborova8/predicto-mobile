@@ -1,16 +1,4 @@
-import type { LeaderboardEntry, PastTicket, PastPrediction } from '@/types/domain';
-
-export const LEADERBOARD: LeaderboardEntry[] = [
-  { userId: 'u6', points: 2840, bigOdds: 18.75, streak: 4,  change: 0,  friend: false },
-  { userId: 'u9', points: 2615, bigOdds: 42.30, streak: 3,  change: 1,  friend: false },
-  { userId: 'u3', points: 2487, bigOdds: 9.55,  streak: 7,  change: -1, friend: true },
-  { userId: 'u2', points: 2304, bigOdds: 12.10, streak: 2,  change: 2,  friend: true },
-  { userId: 'u5', points: 2156, bigOdds: 24.80, streak: 5,  change: 0,  friend: true },
-  { userId: 'u7', points: 1942, bigOdds: 6.40,  streak: 1,  change: -2, friend: true },
-  { userId: 'u4', points: 1823, bigOdds: 31.20, streak: 0,  change: 1,  friend: false },
-  { userId: 'u1', points: 1687, bigOdds: 14.56, streak: 6,  change: 3,  friend: true, isMe: true },
-  { userId: 'u8', points: 1521, bigOdds: 8.90,  streak: 2,  change: -1, friend: false },
-];
+import type { PastTicket, PastPrediction } from '@/types/domain';
 
 export const PAST_TICKETS: PastTicket[] = [
   { id: 'tk_a', date: 'Apr 23', status: 'won',     stake: 50,  multiplier: 5.27,  points: 263, legIds: ['p01', 'p02'] },
