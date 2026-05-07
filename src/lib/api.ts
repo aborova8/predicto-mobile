@@ -117,14 +117,17 @@ export const api = {
     request<T>(path, { ...opts, method: 'GET' }),
   post: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body' | 'formData'>) =>
     request<T>(path, { ...opts, method: 'POST', body }),
-  postForm: <T>(path: string, formData: FormData, opts?: Omit<RequestOpts, 'method' | 'body' | 'formData'>) =>
-    request<T>(path, { ...opts, method: 'POST', formData }),
+  postForm: <T>(
+    path: string,
+    formData: FormData,
+    opts?: Omit<RequestOpts, 'body' | 'formData'> & { method?: 'POST' | 'PUT' | 'PATCH' },
+  ) => request<T>(path, { ...opts, method: opts?.method ?? 'POST', formData }),
   put: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body' | 'formData'>) =>
     request<T>(path, { ...opts, method: 'PUT', body }),
   patch: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body' | 'formData'>) =>
     request<T>(path, { ...opts, method: 'PATCH', body }),
-  delete: <T>(path: string, opts?: Omit<RequestOpts, 'method' | 'body' | 'formData'>) =>
-    request<T>(path, { ...opts, method: 'DELETE' }),
+  delete: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body' | 'formData'>) =>
+    request<T>(path, { ...opts, method: 'DELETE', body }),
 };
 
 type QueryValue = string | number | boolean | Date | null | undefined;

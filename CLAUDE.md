@@ -100,3 +100,4 @@ Standard Expo conventions: `EXPO_PUBLIC_*` vars are inlined into the JS bundle (
 - `expo-glass-effect` requires a development build to render correctly — Expo Go shows a degraded fallback.
 - Reanimated v4 needs `react-native-worklets` (already in `package.json`); a full simulator restart is required after install.
 - If `ios/` or `android/` were prebuilt locally, delete them before re-running — the project relies on CNG.
+- `expo-iap` (paywall purchases) requires a custom dev client. Expo Go cannot run StoreKit / Play Billing — `paywall.tsx` detects `Constants.appOwnership === 'expo'` and shows an explanatory banner. To test real purchases, build with `eas build --profile development --platform <ios|android>` and sign in as a sandbox tester.

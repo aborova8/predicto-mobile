@@ -1,7 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { TEAMS } from '@/data/teams';
-import { fixtureMap } from '@/data/fixtures';
 import { calculateTotalOdds, fmtOdds } from '@/lib/format';
 import { getMatch } from '@/lib/matchCache';
 import { statusGlyph, ticketBannerLabel } from '@/lib/status';
@@ -53,7 +52,7 @@ export function TicketSlip({ ticket, onPress }: TicketSlipProps) {
 
       <View style={{ paddingTop: 8, paddingBottom: 4 }}>
         {ticket.legs.map((leg, i) => {
-          const f = leg.fixture ?? getMatch(leg.matchId) ?? fixtureMap[leg.matchId];
+          const f = leg.fixture ?? getMatch(leg.matchId);
           if (!f) return null;
           const ls = leg.status;
           const wash =

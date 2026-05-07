@@ -1,14 +1,27 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useMemo } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { Avatar } from '@/components/atoms/Avatar';
 import { ScreenHeader } from '@/components/nav/ScreenHeader';
-import { NOTIFICATIONS } from '@/data/notifications';
-import { USERS } from '@/data/users';
+import { useNotifications } from '@/hooks/useNotifications';
 import { withAlpha } from '@/lib/colors';
+import { notificationToApp } from '@/lib/notificationCopy';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
-import type { AppNotification, NotificationKind } from '@/types/domain';
+import type {
+  AppNotification,
+  BackendNotification,
+  NotificationKind,
+} from '@/types/domain';
 
 import type { Theme } from '@/theme/tokens';
 
@@ -46,22 +59,38 @@ const kindColor = (theme: Theme, kind: NotificationKind): string => {
   }
 };
 
+const TODAY_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+
+interface UiItem {
+  app: AppNotification;
+  raw: BackendNotification;
+}
+
 export default function NotificationsScreen() {
   const theme = useTheme();
-  const [items, setItems] = useState<AppNotification[]>(NOTIFICATIONS);
-  const unread = items.filter((n) => !n.read).length;
-  const today = items.slice(0, 4);
-  const earlier = items.slice(4);
-  const markAllRead = () => setItems((prev) => prev.map((n) => ({ ...n, read: true })));
+  const { items, unreadCount, isLoading, error, refresh, markAllRead, markRead } = useNotifications();
+
+  const { today, earlier } = useMemo(() => {
+    const now = Date.now();
+    const ui: UiItem[] = items.map((n) => ({ app: notificationToApp(n), raw: n }));
+    const todayList: UiItem[] = [];
+    const earlierList: UiItem[] = [];
+    for (const it of ui) {
+      const age = now - new Date(it.raw.createdAt).getTime();
+      if (age <= TODAY_THRESHOLD_MS) todayList.push(it);
+      else earlierList.push(it);
+    }
+    return { today: todayList, earlier: earlierList };
+  }, [items]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ScreenHeader
         title="Notifications"
         right={
-          unread > 0 ? (
+          unreadCount > 0 ? (
             <Pressable
-              onPress={markAllRead}
+              onPress={() => void markAllRead()}
               style={[styles.markAll, { borderColor: theme.line }]}
             >
               <Text style={[styles.markAllTxt, { color: theme.text2 }]}>MARK ALL READ</Text>
@@ -69,8 +98,55 @@ export default function NotificationsScreen() {
           ) : undefined
         }
       />
-      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-        {unread > 0 ? (
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading && items.length > 0}
+            onRefresh={() => void refresh()}
+            tintColor={theme.text3}
+          />
+        }
+      >
+        {error ? (
+          <Text
+            style={{
+              color: theme.loss,
+              fontFamily: Fonts.uiRegular,
+              fontSize: 13,
+              padding: 16,
+              textAlign: 'center',
+            }}
+          >
+            {error.message}
+          </Text>
+        ) : null}
+
+        {isLoading && items.length === 0 ? (
+          <ActivityIndicator color={theme.text3} style={{ marginTop: 80 }} />
+        ) : null}
+
+        {!isLoading && items.length === 0 ? (
+          <View style={{ padding: 60, alignItems: 'center' }}>
+            <Text style={{ fontSize: 36, marginBottom: 8 }}>🔔</Text>
+            <Text style={{ color: theme.text, fontFamily: Fonts.dispBold, fontSize: 16 }}>
+              All quiet
+            </Text>
+            <Text
+              style={{
+                color: theme.text3,
+                fontFamily: Fonts.monoMedium,
+                fontSize: 11,
+                letterSpacing: 0.4,
+                marginTop: 4,
+              }}
+            >
+              YOU&apos;LL SEE LIKES, COMMENTS, AND TICKET RESULTS HERE
+            </Text>
+          </View>
+        ) : null}
+
+        {unreadCount > 0 ? (
           <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
             <View
               style={[
@@ -80,19 +156,30 @@ export default function NotificationsScreen() {
             >
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.neon }} />
               <Text style={{ color: theme.neon, fontFamily: Fonts.monoBold, fontSize: 10, letterSpacing: 0.5 }}>
-                {unread} NEW
+                {unreadCount} NEW
               </Text>
             </View>
           </View>
         ) : null}
-        <Group title="Today" items={today} />
-        {earlier.length > 0 ? <Group title="Earlier" items={earlier} /> : null}
+
+        {today.length > 0 ? <Group title="Today" items={today} onPress={(id) => void markRead(id)} /> : null}
+        {earlier.length > 0 ? (
+          <Group title="Earlier" items={earlier} onPress={(id) => void markRead(id)} />
+        ) : null}
       </ScrollView>
     </View>
   );
 }
 
-function Group({ title, items }: { title: string; items: AppNotification[] }) {
+function Group({
+  title,
+  items,
+  onPress,
+}: {
+  title: string;
+  items: UiItem[];
+  onPress: (id: string) => void;
+}) {
   const theme = useTheme();
   return (
     <View style={{ marginBottom: 14 }}>
@@ -103,33 +190,60 @@ function Group({ title, items }: { title: string; items: AppNotification[] }) {
           { backgroundColor: theme.surface, borderColor: theme.line },
         ]}
       >
-        {items.map((n, i) => (
-          <Row key={n.id} n={n} divided={i > 0} />
+        {items.map((it, i) => (
+          <Row key={it.app.id} item={it} divided={i > 0} onPress={() => onPress(it.app.id)} />
         ))}
       </View>
     </View>
   );
 }
 
-function Row({ n, divided }: { n: AppNotification; divided: boolean }) {
+function Row({
+  item,
+  divided,
+  onPress,
+}: {
+  item: UiItem;
+  divided: boolean;
+  onPress: () => void;
+}) {
   const theme = useTheme();
-  const color = kindColor(theme, n.kind);
-  const icon = KIND_ICON[n.kind];
-  const u = n.userId ? USERS[n.userId] : null;
+  const router = useRouter();
+  const { app, raw } = item;
+  const color = kindColor(theme, app.kind);
+  const icon = KIND_ICON[app.kind];
+
+  const navigate = () => {
+    onPress();
+    if (raw.post) {
+      router.push(`/comments?postId=${encodeURIComponent(raw.post.id)}`);
+    } else if (raw.ticket) {
+      router.push(`/ticket/${raw.ticket.id}`);
+    } else if (raw.group) {
+      router.push(`/group/${raw.group.id}`);
+    } else if (raw.actor) {
+      router.push(`/user/${raw.actor.id}`);
+    }
+  };
+
   return (
-    <View
+    <Pressable
+      onPress={navigate}
       style={[
         styles.row,
         {
-          backgroundColor: !n.read ? withAlpha(theme.neon, 0.06) : 'transparent',
+          backgroundColor: !app.read ? withAlpha(theme.neon, 0.06) : 'transparent',
           borderTopWidth: divided ? StyleSheet.hairlineWidth : 0,
           borderTopColor: theme.lineSoft,
         },
       ]}
     >
       <View style={{ position: 'relative' }}>
-        {u ? (
-          <Avatar user={u} size={36} />
+        {raw.actor ? (
+          <Avatar
+            author={{ username: raw.actor.username, avatarUrl: raw.actor.avatarUrl }}
+            size={36}
+          />
         ) : (
           <View
             style={[
@@ -140,7 +254,7 @@ function Row({ n, divided }: { n: AppNotification; divided: boolean }) {
             <Text style={{ color, fontSize: 16, fontFamily: Fonts.dispBlack }}>{icon}</Text>
           </View>
         )}
-        {u ? (
+        {raw.actor ? (
           <View style={[styles.kindBadge, { backgroundColor: color, borderColor: theme.surface }]}>
             <Text style={{ color: '#06091A', fontSize: 9, fontFamily: Fonts.dispBlack }}>{icon}</Text>
           </View>
@@ -148,22 +262,19 @@ function Row({ n, divided }: { n: AppNotification; divided: boolean }) {
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ color: theme.text, fontFamily: Fonts.uiRegular, fontSize: 13, lineHeight: 18 }}>
-          {n.text}
+          {app.text}
         </Text>
-        {n.sub ? (
+        {app.sub ? (
           <Text style={{ color: theme.text3, fontFamily: Fonts.monoRegular, fontSize: 11, marginTop: 2, lineHeight: 14 }}>
-            {n.sub}
+            {app.sub}
           </Text>
         ) : null}
         <Text style={{ color: theme.text3, fontFamily: Fonts.monoMedium, fontSize: 10, marginTop: 4, letterSpacing: 0.5 }}>
-          {n.time.toUpperCase()} AGO
+          {app.time.toUpperCase()} AGO
         </Text>
       </View>
-      {n.meta ? (
-        <Text style={{ color, fontFamily: Fonts.dispBlack, fontSize: 14 }}>{n.meta}</Text>
-      ) : null}
-      {!n.read ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.neon }} /> : null}
-    </View>
+      {!app.read ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.neon }} /> : null}
+    </Pressable>
   );
 }
 

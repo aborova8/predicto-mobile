@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Crest } from '@/components/atoms/Crest';
 import { Pill } from '@/components/atoms/Pill';
 import { TEAMS } from '@/data/teams';
-import { fixtureMap } from '@/data/fixtures';
 import { withAlpha } from '@/lib/colors';
 import { calculateTotalOdds, fmtOdds } from '@/lib/format';
 import { getMatch } from '@/lib/matchCache';
@@ -54,7 +53,7 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
 
       <View style={{ paddingHorizontal: 14, paddingBottom: 12 }}>
         {ticket.legs.map((leg, i) => {
-          const f = leg.fixture ?? getMatch(leg.matchId) ?? fixtureMap[leg.matchId];
+          const f = leg.fixture ?? getMatch(leg.matchId);
           if (!f) return null;
           const isLast = i === ticket.legs.length - 1;
           const ls = leg.status;

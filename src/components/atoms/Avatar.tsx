@@ -4,11 +4,10 @@ import { Image, StyleSheet, Text, View, type ImageStyle, type ViewStyle } from '
 
 import { avatarGradient } from '@/lib/colors';
 import { Fonts } from '@/theme/fonts';
-import type { User } from '@/types/domain';
 
 interface AvatarProps {
-  user?: User | null;
-  // Backend-driven authors don't carry a User shape — pass the raw fields.
+  // Backend-driven authors carry only `{ username, avatarUrl }`. The avatar
+  // gradient is derived from a hash of the username when no image is set.
   author?: { username: string; avatarUrl: string | null } | null;
   size?: number;
   ring?: boolean;
@@ -29,9 +28,9 @@ function initialsFromName(name: string): string {
   return parts.map((n) => n[0] ?? '').slice(0, 2).join('').toUpperCase();
 }
 
-export function Avatar({ user, author, size = 36, ring = false, style }: AvatarProps) {
+export function Avatar({ author, size = 36, ring = false, style }: AvatarProps) {
   const [imgFailed, setImgFailed] = useState(false);
-  if (!user && !author) return null;
+  if (!author) return null;
 
   const dim: ViewStyle = { width: size, height: size, borderRadius: size / 2 };
   const ringWrap: ViewStyle | null = ring
@@ -43,7 +42,7 @@ export function Avatar({ user, author, size = 36, ring = false, style }: AvatarP
     : null;
 
   let inner: React.ReactNode;
-  if (author?.avatarUrl && !imgFailed) {
+  if (author.avatarUrl && !imgFailed) {
     const imgDim: ImageStyle = { width: size, height: size, borderRadius: size / 2 };
     inner = (
       <Image
@@ -54,10 +53,9 @@ export function Avatar({ user, author, size = 36, ring = false, style }: AvatarP
       />
     );
   } else {
-    const name = user?.name ?? author?.username ?? '?';
-    const hue = user?.avatarHue ?? hueFromString(author?.username ?? name);
+    const hue = hueFromString(author.username);
     const [c1, c2] = avatarGradient(hue);
-    const initials = initialsFromName(name);
+    const initials = initialsFromName(author.username);
     inner = (
       <LinearGradient
         colors={[c1, c2]}

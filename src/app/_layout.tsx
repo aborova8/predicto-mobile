@@ -63,7 +63,6 @@ function RootStack() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="ticket/[id]" options={{ presentation: 'card', animation: 'slide_from_right' }} />
-        <Stack.Screen name="prediction/[id]" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="group/[id]" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="group-feed/[id]" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="create-group" options={{ presentation: 'modal' }} />
@@ -71,6 +70,8 @@ function RootStack() {
         <Stack.Screen name="notifications" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="friends" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="settings" options={{ presentation: 'card', animation: 'slide_from_right' }} />
+        <Stack.Screen name="edit-profile" options={{ presentation: 'card', animation: 'slide_from_right' }} />
+        <Stack.Screen name="change-password" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="legal" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="verify-email" options={{ presentation: 'card', animation: 'fade' }} />
         <Stack.Screen name="comments" options={{ presentation: 'transparentModal', animation: 'fade' }} />

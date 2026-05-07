@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,17 +13,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/atoms/Avatar';
 import { Icon } from '@/components/atoms/Icon';
-import { FIXTURES } from '@/data/fixtures';
 import { TEAMS } from '@/data/teams';
-import { USERS } from '@/data/users';
 import { useGroups } from '@/hooks/useGroups';
+import { useMatches } from '@/hooks/useMatches';
+import { useUserSearch } from '@/hooks/useUserSearch';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
 
 type Scope = 'all' | 'users' | 'groups' | 'matches';
-
-const TRENDING = ['El Clásico', 'PSG vs Bayern', 'Premier League', 'Underdog Club', '@marcoR'];
-const RECENT = ['ARS vs CHE', '@anya.v', 'The Lads'];
 
 export default function SearchScreen() {
   const theme = useTheme();
@@ -32,37 +30,38 @@ export default function SearchScreen() {
   const [scope, setScope] = useState<Scope>('all');
   const inputRef = useRef<TextInput>(null);
 
-  // Backend has no group-search endpoint, but `scope=public` returns up to 100
-  // groups and we filter client-side. The list is silently absent if loading
-  // fails — we don't want a network blip to block users/matches search.
+  // Backend has no group-search endpoint, but `scope=public` returns groups
+  // we filter client-side. Same trick is used by useMatches for fixtures.
   const publicGroups = useGroups({ scope: 'public' });
+  const { fixtures } = useMatches();
+  const { results: userResults, isLoading: usersLoading, belowMinLength } = useUserSearch(q);
 
   useEffect(() => {
     const t = setTimeout(() => inputRef.current?.focus(), 200);
     return () => clearTimeout(t);
   }, []);
 
-  const { userResults, groupResults, matchResults } = useMemo(() => {
-    if (!q) return { userResults: [], groupResults: [], matchResults: [] };
+  const { groupResults, matchResults } = useMemo(() => {
+    if (!q) return { groupResults: [], matchResults: [] };
     const needle = q.toLowerCase();
     const has = (target: string) => target.toLowerCase().includes(needle);
     return {
-      userResults: Object.values(USERS).filter(
-        (u) => !u.isMe && (has(u.name) || has(u.handle)),
+      groupResults: publicGroups.groups.filter(
+        (g) => has(g.name) || has(g.description ?? ''),
       ),
-      groupResults: publicGroups.groups.filter((g) => has(g.name) || has(g.description ?? '')),
-      matchResults: FIXTURES.filter(
+      matchResults: fixtures.filter(
         (m) =>
-          has(TEAMS[m.home]?.name ?? '') ||
-          has(TEAMS[m.away]?.name ?? '') ||
+          has(TEAMS[m.home]?.name ?? m.homeName ?? '') ||
+          has(TEAMS[m.away]?.name ?? m.awayName ?? '') ||
           has(m.home) ||
           has(m.away) ||
           has(m.league),
       ),
     };
-  }, [q, publicGroups.groups]);
+  }, [q, publicGroups.groups, fixtures]);
   const empty =
-    q && userResults.length === 0 && groupResults.length === 0 && matchResults.length === 0;
+    q && !belowMinLength && !usersLoading &&
+    userResults.length === 0 && groupResults.length === 0 && matchResults.length === 0;
   const showSection = (k: Scope) => scope === 'all' || scope === k;
 
   return (
@@ -123,46 +122,17 @@ export default function SearchScreen() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }} keyboardShouldPersistTaps="handled">
         {!q ? (
-          <>
-            <Text style={[styles.sectionLabel, { color: theme.text3 }]}>TRENDING</Text>
-            <View style={styles.chipsRow}>
-              {TRENDING.map((t) => (
-                <Pressable
-                  key={t}
-                  onPress={() => setQ(t.replace('@', ''))}
-                  style={[styles.chip, { backgroundColor: theme.surface, borderColor: theme.line }]}
-                >
-                  <Text style={{ color: theme.neon }}>↗</Text>
-                  <Text style={{ color: theme.text, fontFamily: Fonts.uiMedium, fontSize: 12 }}>
-                    {t}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={[styles.sectionLabel, { color: theme.text3, marginTop: 18 }]}>
-              RECENT
+          <View style={{ paddingVertical: 60, paddingHorizontal: 24, alignItems: 'center' }}>
+            <Text style={{ fontSize: 36, marginBottom: 8 }}>🔎</Text>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>Search Predicto</Text>
+            <Text style={[styles.emptySub, { color: theme.text3 }]}>
+              FIND PLAYERS, GROUPS, AND MATCHES
             </Text>
-            <View
-              style={[styles.recentCard, { backgroundColor: theme.surface, borderColor: theme.line }]}
-            >
-              {RECENT.map((r, i) => (
-                <Pressable
-                  key={r}
-                  onPress={() => setQ(r.replace('@', ''))}
-                  style={[
-                    styles.recentRow,
-                    i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.lineSoft },
-                  ]}
-                >
-                  <Icon name="search" size={14} color={theme.text3} />
-                  <Text style={{ flex: 1, color: theme.text, fontFamily: Fonts.uiRegular, fontSize: 13 }}>
-                    {r}
-                  </Text>
-                  <Text style={{ color: theme.text3, fontFamily: Fonts.monoRegular, fontSize: 10 }}>↖</Text>
-                </Pressable>
-              ))}
-            </View>
-          </>
+          </View>
+        ) : belowMinLength ? (
+          <Text style={[styles.hint, { color: theme.text3 }]}>
+            Type at least 3 characters to search players.
+          </Text>
         ) : empty ? (
           <View style={{ paddingVertical: 60, paddingHorizontal: 24, alignItems: 'center' }}>
             <Text style={{ fontSize: 36, marginBottom: 8 }}>🔎</Text>
@@ -173,20 +143,28 @@ export default function SearchScreen() {
           </View>
         ) : (
           <>
-            {showSection('users') && userResults.length > 0 ? (
-              <Section title={`Players · ${userResults.length}`}>
-                {userResults.slice(0, 6).map((u) => (
+            {showSection('users') ? (
+              <Section title={`Players · ${userResults.length}${usersLoading ? '…' : ''}`}>
+                {usersLoading && userResults.length === 0 ? (
+                  <ActivityIndicator color={theme.text3} style={{ paddingVertical: 16 }} />
+                ) : null}
+                {userResults.map((u) => (
                   <Pressable
                     key={u.id}
                     onPress={() => router.push(`/user/${u.id}`)}
                     style={[styles.row]}
                   >
-                    <Avatar user={u} size={36} />
+                    <Avatar
+                      author={{ username: u.username, avatarUrl: u.avatarUrl }}
+                      size={36}
+                    />
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.rowTitle, { color: theme.text }]}>{u.name}</Text>
-                      <Text style={[styles.rowMeta, { color: theme.text3 }]}>
-                        @{u.handle} · LVL {u.level} · {u.hitRate}%
-                      </Text>
+                      <Text style={[styles.rowTitle, { color: theme.text }]}>{u.username}</Text>
+                      {typeof u.points === 'number' ? (
+                        <Text style={[styles.rowMeta, { color: theme.text3 }]}>
+                          {u.points} PTS
+                        </Text>
+                      ) : null}
                     </View>
                     <Icon name="chevron" size={14} color={theme.text3} />
                   </Pressable>
@@ -203,7 +181,8 @@ export default function SearchScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.rowTitle, { color: theme.text }]}>{g.name}</Text>
                       <Text style={[styles.rowMeta, { color: theme.text3 }]}>
-                        {g.memberCount.toLocaleString()} MEMBERS{g.visibility === 'PRIVATE' ? ' · 🔒 PRIVATE' : ''}
+                        {g.memberCount.toLocaleString()} MEMBERS
+                        {g.visibility === 'PRIVATE' ? ' · 🔒 PRIVATE' : ''}
                       </Text>
                     </View>
                     <Icon name="chevron" size={14} color={theme.text3} />
@@ -226,7 +205,8 @@ export default function SearchScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.rowTitle, { color: theme.text }]}>
-                        {TEAMS[m.home]?.short} vs {TEAMS[m.away]?.short}
+                        {TEAMS[m.home]?.short ?? m.homeName ?? m.home} vs{' '}
+                        {TEAMS[m.away]?.short ?? m.awayName ?? m.away}
                       </Text>
                       <Text style={[styles.rowMeta, { color: theme.text3 }]}>
                         {m.league.toUpperCase()} · {m.kickoff.toUpperCase()}
@@ -316,19 +296,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 999,
   },
-  recentCard: {
-    marginHorizontal: 16,
-    borderWidth: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  recentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
   list: {
     borderWidth: 1,
     borderRadius: 12,
@@ -380,5 +347,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.4,
     marginTop: 4,
+  },
+  hint: {
+    fontFamily: Fonts.uiRegular,
+    fontSize: 13,
+    paddingHorizontal: 32,
+    marginTop: 24,
+    textAlign: 'center',
   },
 });

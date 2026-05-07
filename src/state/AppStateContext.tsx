@@ -9,8 +9,10 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react';
+import { AppState } from 'react-native';
 
 import { configureApi } from '@/lib/api';
+import { getEntitlements, type BackendEntitlements } from '@/lib/api/iap';
 import { createTicket } from '@/lib/api/tickets';
 import * as authApi from '@/lib/auth/api';
 import * as authStorage from '@/lib/auth/storage';
@@ -55,12 +57,30 @@ interface AppStateCtx {
 
   feedLayout: FeedLayout;
   setFeedLayout: (v: FeedLayout) => void;
+
+  // ── IAP entitlements (feature-flag layer; per-screen ticket eligibility lives in useEligibility) ──
+  entitlements: BackendEntitlements | null;
+  refreshEntitlements: () => Promise<void>;
 }
 
 const AppStateContext = createContext<AppStateCtx | null>(null);
 
 const TICKET_VARIANT_KEY = 'predicto.ticketVariant';
 const FEED_LAYOUT_KEY = 'predicto.feedLayout';
+
+function sameEntitlements(a: BackendEntitlements | null, b: BackendEntitlements | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.hasActiveSubscription === b.hasActiveSubscription &&
+    a.livesBalance === b.livesBalance &&
+    a.subscription?.expiresAt === b.subscription?.expiresAt &&
+    a.subscription?.status === b.subscription?.status &&
+    a.flags.hideAds === b.flags.hideAds &&
+    a.flags.unlimitedTickets === b.flags.unlimitedTickets &&
+    a.flags.canCreatePrivateGroup === b.flags.canCreatePrivateGroup
+  );
+}
 
 function sameAuthUser(a: AuthUser | null, b: AuthUser | null): boolean {
   if (a === b) return true;
@@ -92,18 +112,39 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [filter, setFilter] = useState<FeedScope>('global');
   const [ticketVariant, setTicketVariantState] = useState<TicketVariant>('slip');
   const [feedLayout, setFeedLayoutState] = useState<FeedLayout>('card');
+  const [entitlements, setEntitlements] = useState<BackendEntitlements | null>(null);
 
-  const applySession = useCallback((next: { token: string; user: AuthUser } | null) => {
-    if (next) {
-      tokenRef.current = next.token;
-      setToken(next.token);
-      setUser(next.user);
-    } else {
-      tokenRef.current = null;
-      setToken(null);
-      setUser(null);
+  const refreshEntitlements = useCallback(async () => {
+    if (!tokenRef.current) {
+      setEntitlements((prev) => (prev === null ? prev : null));
+      return;
+    }
+    try {
+      const { entitlements: e } = await getEntitlements();
+      // Skip the re-render when nothing material changed — foreground refreshes
+      // fire often and entitlements rarely move.
+      setEntitlements((prev) => (sameEntitlements(prev, e) ? prev : e));
+    } catch {
+      // Entitlements are advisory — never block UX on their refresh.
     }
   }, []);
+
+  const applySession = useCallback(
+    (next: { token: string; user: AuthUser } | null) => {
+      if (next) {
+        tokenRef.current = next.token;
+        setToken(next.token);
+        setUser(next.user);
+        void refreshEntitlements();
+      } else {
+        tokenRef.current = null;
+        setToken(null);
+        setUser(null);
+        setEntitlements(null);
+      }
+    },
+    [refreshEntitlements],
+  );
 
   const signOut = useCallback(async () => {
     // Best-effort remote call; never block local logout on the network.
@@ -160,6 +201,16 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       cancelled = true;
     };
   }, [applySession]);
+
+  // Refresh entitlements when the app comes back to the foreground — webhook
+  // events from Apple/Google may have updated subscription status while the
+  // app was backgrounded.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshEntitlements();
+    });
+    return () => sub.remove();
+  }, [refreshEntitlements]);
 
   const setTicketVariant = useCallback((v: TicketVariant) => {
     setTicketVariantState(v);
@@ -258,11 +309,11 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       };
       const { ticket } = await createTicket(payload);
       setPicks({});
-      // Refresh the cached user (livesBalance / points may have shifted).
       void refreshUser().catch(() => {});
+      void refreshEntitlements().catch(() => {});
       return { ticketId: ticket.id };
     },
-    [picks, refreshUser],
+    [picks, refreshUser, refreshEntitlements],
   );
 
   const pickCount = useMemo(
@@ -292,6 +343,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       filter, setFilter,
       ticketVariant, setTicketVariant,
       feedLayout, setFeedLayout,
+      entitlements, refreshEntitlements,
     }),
     [
       authed, authLoading, user, token,
@@ -300,6 +352,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       picks, setPick, clearPicks, pickCount, submitTicket,
       filter, ticketVariant, setTicketVariant,
       feedLayout, setFeedLayout,
+      entitlements, refreshEntitlements,
     ],
   );
 

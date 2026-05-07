@@ -34,24 +34,7 @@ export interface Fixture {
   odds: FixtureOdds;
 }
 
-export interface User {
-  id: string;
-  name: string;
-  handle: string;
-  avatarHue: number;
-  level: number;
-  streak: number;
-  friend: boolean;
-  isMe?: boolean;
-  wins: number;
-  losses: number;
-  tickets: number;
-  hitRate: number;
-}
-
-// The authenticated user as returned by /api/auth/* endpoints. Distinct from
-// the social-graph `User` shape above (which carries feed-specific stats);
-// both refer to a person but the backend only owns the auth fields.
+// The authenticated user as returned by /api/auth/* endpoints.
 export type AuthRole = 'USER' | 'ADMIN';
 export type AuthProvider = 'LOCAL' | 'GOOGLE' | 'APPLE';
 
@@ -116,9 +99,9 @@ export interface Leg {
   pick: Pick;
   status?: LegStatus;
   result?: string;
-  // Inlined fixture data when the leg is sourced from the backend (where each
-  // pick already carries its match). Falls back to fixtureMap / matchCache when
-  // absent so legacy mock posts keep rendering.
+  // Inlined fixture data — the backend includes the full match on each pick,
+  // so this is always populated for tickets fetched from the API. Local picks
+  // staged via AppStateContext.setPick fall back to matchCache.
   fixture?: Fixture;
 }
 
@@ -148,26 +131,7 @@ export interface Post {
   ticket: Ticket;
 }
 
-export interface Reply {
-  id: string;
-  userId: string;
-  text: string;
-  time: string;
-  likes: number;
-}
-
-export interface Comment {
-  id: string;
-  userId: string;
-  text: string;
-  time: string;
-  likes: number;
-  replies: Reply[];
-}
-
 // Live, backend-driven comment shape used by the feed/comments sheet.
-// Distinct from the legacy mock-driven `Comment` type which other screens
-// (leaderboard, profile) still import.
 export interface FeedComment {
   id: string;
   parentId: string | null;
@@ -257,30 +221,6 @@ export interface LeaderboardResponse {
   viewer: LeaderboardEntry | null;
 }
 
-export interface PastTicket {
-  id: string;
-  date: string;
-  status: TicketStatus;
-  stake: number;
-  multiplier: number;
-  points: number;
-  legIds: string[];
-}
-
-export interface PastPrediction {
-  id: string;
-  ticketId: string;
-  date: string;
-  league: string;
-  home: TeamCode;
-  away: TeamCode;
-  kickoff: string;
-  pick: Pick;
-  result: string;
-  odds: number;
-  status: LegStatus;
-}
-
 export type NotificationKind =
   | 'win'
   | 'like'
@@ -361,6 +301,8 @@ export interface BackendTicket {
   evaluatedAt: string | null;
   picks: BackendPick[];
   user?: { id: string; username: string; avatarUrl: string | null };
+  // The auto-created social post for this ticket. Returned by GET /api/tickets/:id.
+  post?: { id: string; caption: string | null; createdAt: string } | null;
 }
 
 export interface BackendFeedAuthor {
@@ -430,4 +372,63 @@ export interface BackendGroup {
   viewerRole?: GroupRole | null;
   role?: GroupRole;
   owner?: PostAuthor;
+}
+
+// Minimal user shape returned by friends endpoints (and several others). Wider
+// than BackendFeedAuthor only for friends, where `points` is included.
+export interface BackendFriendUser {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+  points?: number;
+}
+
+// Mirrors the NotificationKind enum in predicto-backend/prisma/schema.prisma.
+export type BackendNotificationKind =
+  | 'LIKE_POST'
+  | 'LIKE_COMMENT'
+  | 'COMMENT_POST'
+  | 'COMMENT_REPLY'
+  | 'FRIEND_REQUEST'
+  | 'FRIEND_ACCEPTED'
+  | 'TICKET_WON'
+  | 'TICKET_LOST'
+  | 'TICKET_VOIDED'
+  | 'GROUP_JOIN_REQUEST'
+  | 'GROUP_JOIN_APPROVED'
+  | 'GROUP_ROLE_CHANGE'
+  | 'BADGE_EARNED';
+
+export interface BackendNotification {
+  id: string;
+  kind: BackendNotificationKind;
+  createdAt: string;
+  readAt: string | null;
+  actor: { id: string; username: string; avatarUrl: string | null } | null;
+  post: { id: string; caption: string | null } | null;
+  comment: { id: string; body: string } | null;
+  ticket: {
+    id: string;
+    status: BackendTicketStatus;
+    pointsAwarded: number;
+    totalOdds: number;
+  } | null;
+  group: { id: string; name: string; avatarUrl: string | null } | null;
+  badge: { id: string; code: string; name: string; iconUrl: string | null } | null;
+  metadata: unknown | null;
+}
+
+export type FriendshipStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'BLOCKED';
+
+// Returned by GET /api/friends/requests/{incoming,outgoing}. Includes the
+// counterparty as either `requester` or `addressee` depending on direction.
+export interface BackendFriendRequest {
+  id: string;
+  requesterId: string;
+  addresseeId: string;
+  status: FriendshipStatus;
+  requester?: BackendFriendUser;
+  addressee?: BackendFriendUser;
+  createdAt: string;
+  updatedAt?: string;
 }

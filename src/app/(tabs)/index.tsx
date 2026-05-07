@@ -16,6 +16,7 @@ import { FeedHeader } from '@/components/feed/FeedHeader';
 import { FeedPostCard } from '@/components/feed/FeedPostCard';
 import { FeedPostCompact } from '@/components/feed/FeedPostCompact';
 import { useFeed } from '@/hooks/useFeed';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
@@ -30,6 +31,7 @@ export default function FeedScreen() {
   const { posts, loading, loadingMore, error, hasMore, refetch, fetchMore, like } = useFeed({
     scope: filter,
   });
+  const { unread } = useUnreadNotifications();
   const [refreshing, setRefreshing] = useState(false);
 
   // Refetch on focus so that a slip submitted on the predict tab shows up
@@ -85,6 +87,7 @@ export default function FeedScreen() {
             onFilter={setFilter}
             onOpenSearch={() => router.push('/search')}
             onOpenNotifications={() => router.push('/notifications')}
+            unreadNotifications={unread > 0}
           />
         }
         stickyHeaderIndices={[0]}

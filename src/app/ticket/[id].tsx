@@ -4,10 +4,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { Avatar } from '@/components/atoms/Avatar';
 import { Icon } from '@/components/atoms/Icon';
 import { ScreenHeader } from '@/components/nav/ScreenHeader';
-import { fixtureMap } from '@/data/fixtures';
-import { PAST_PREDICTIONS, PAST_TICKETS } from '@/data/leaderboard';
 import { TEAMS } from '@/data/teams';
-import { USERS } from '@/data/users';
 import { useTicket } from '@/hooks/useTicket';
 import { withAlpha } from '@/lib/colors';
 import { multiplyOdds } from '@/lib/format';
@@ -34,7 +31,7 @@ interface ViewModelLeg {
 }
 
 function resolveFixture(leg: Leg): Fixture | undefined {
-  return leg.fixture ?? getMatch(leg.matchId) ?? fixtureMap[leg.matchId];
+  return leg.fixture ?? getMatch(leg.matchId);
 }
 
 export default function TicketDetailScreen() {
@@ -42,14 +39,8 @@ export default function TicketDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const ticketId = id ?? '';
 
-  // Past mock tickets are kept as a fallback so legacy navigation from the
-  // leaderboard / profile (which still use mock data) keeps working until
-  // those screens are migrated.
-  const past = PAST_TICKETS.find((t) => t.id === ticketId);
-  const fetchEnabled = !past && Boolean(ticketId);
-
   const { ticket, raw, createdAtRelative, loading, error } = useTicket(
-    fetchEnabled ? ticketId : null,
+    ticketId ? ticketId : null,
   );
   const authorUsername = raw?.user?.username ?? null;
   const authorAvatarUrl = raw?.user?.avatarUrl ?? null;
@@ -85,29 +76,10 @@ export default function TicketDetailScreen() {
     stake = ticket.stake ?? 10;
     displayName = authorUsername ?? undefined;
     displayAvatarUrl = authorAvatarUrl;
-  } else if (past) {
-    legs = past.legIds
-      .map((legId) => PAST_PREDICTIONS.find((p) => p.id === legId))
-      .filter((p): p is NonNullable<typeof p> => Boolean(p))
-      .map((l) => ({
-        league: l.league,
-        home: l.home,
-        away: l.away,
-        kickoff: l.kickoff,
-        pick: l.pick,
-        odds: l.odds,
-        status: l.status,
-        result: l.result,
-      }));
-    statusKey = past.status;
-    multiplier = past.multiplier;
-    dateLabel = past.date;
-    points = past.points;
-    stake = past.stake;
-    displayName = USERS.u1?.name;
+    caption = raw.post?.caption ?? undefined;
   }
 
-  if (loading && !past) {
+  if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <ScreenHeader title="Slip" />
@@ -118,7 +90,7 @@ export default function TicketDetailScreen() {
     );
   }
 
-  if (!ticket && !past) {
+  if (!ticket) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <ScreenHeader title="Slip" />
@@ -147,31 +119,15 @@ export default function TicketDetailScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}>
         {/* Author */}
         <View style={styles.author}>
-          {displayAvatarUrl || displayName ? (
+          {displayName ? (
             <Avatar
-              user={{
-                id: 'ticket-author',
-                name: displayName ?? '?',
-                handle: displayName ?? '',
-                avatarHue: 200,
-                level: 1,
-                streak: 0,
-                friend: false,
-                wins: 0,
-                losses: 0,
-                tickets: 0,
-                hitRate: 0,
-              }}
+              author={{ username: displayName, avatarUrl: displayAvatarUrl }}
               size={42}
             />
           ) : null}
           <View style={{ flex: 1 }}>
             <Text style={[styles.name, { color: theme.text }]}>{displayName ?? '—'}</Text>
-            {past ? (
-              <Text style={[styles.handle, { color: theme.text3 }]}>
-                @{USERS.u1?.handle} · LVL {USERS.u1?.level} · {USERS.u1?.hitRate}% HIT RATE
-              </Text>
-            ) : displayName ? (
+            {displayName ? (
               <Text style={[styles.handle, { color: theme.text3 }]}>@{displayName}</Text>
             ) : null}
           </View>
