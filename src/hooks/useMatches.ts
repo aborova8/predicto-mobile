@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useStaleRefetch } from '@/hooks/useStaleRefetch';
 import { listMatches } from '@/lib/api/matches';
 import { dayLabelFromIndex, matchToFixture } from '@/lib/mappers';
 import { setMatches } from '@/lib/matchCache';
@@ -20,6 +21,7 @@ export interface UseMatchesResult {
   loading: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
+  lastFetchedAt: Date | null;
 }
 
 export function useMatches(): UseMatchesResult {
@@ -28,7 +30,7 @@ export function useMatches(): UseMatchesResult {
   const [error, setError] = useState<Error | null>(null);
   const reqRef = useRef(0);
 
-  const refetch = useCallback(async () => {
+  const baseRefetch = useCallback(async () => {
     const reqId = ++reqRef.current;
     setLoading(true);
     setError(null);
@@ -51,6 +53,8 @@ export function useMatches(): UseMatchesResult {
     }
   }, []);
 
+  const { refetch, lastFetchedAt } = useStaleRefetch(baseRefetch);
+
   useEffect(() => {
     void refetch();
   }, [refetch]);
@@ -68,5 +72,5 @@ export function useMatches(): UseMatchesResult {
     .sort((a, b) => a[0] - b[0])
     .map(([index, count]) => ({ index, label: dayLabelFromIndex(index, now), count }));
 
-  return { fixtures, byDay, days, loading, error, refetch };
+  return { fixtures, byDay, days, loading, error, refetch, lastFetchedAt };
 }

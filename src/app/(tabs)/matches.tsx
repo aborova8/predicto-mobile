@@ -24,7 +24,7 @@ export default function MatchesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { picks, setPick, pickCount } = useAppState();
-  const { byDay, days, loading, error, refetch } = useMatches();
+  const { byDay, days, loading, error, refetch, lastFetchedAt } = useMatches();
   const {
     data: eligibility,
     ticketsLeft,
@@ -77,6 +77,11 @@ export default function MatchesScreen() {
         <Text style={[styles.sub, { color: theme.text2 }]}>
           Pick 1 (home), X (draw) or 2 (away). Stack them up.
         </Text>
+        {lastFetchedAt ? (
+          <Text style={[styles.updatedAt, { color: theme.text3 }]}>
+            UPDATED {lastFetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        ) : null}
       </View>
 
       {days.length > 0 ? (
@@ -213,6 +218,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.uiRegular,
     fontSize: 13,
     marginTop: 4,
+  },
+  updatedAt: {
+    fontFamily: Fonts.monoMedium,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    marginTop: 6,
   },
   daysRow: {
     borderBottomWidth: StyleSheet.hairlineWidth,

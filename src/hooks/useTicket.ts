@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useStaleRefetch } from '@/hooks/useStaleRefetch';
 import { getTicket } from '@/lib/api/tickets';
 import { backendTicketToTicket, formatRelativeTime } from '@/lib/mappers';
 import type { BackendTicket, Ticket } from '@/types/domain';
@@ -19,7 +20,7 @@ export function useTicket(id: string | null): UseTicketResult {
   const [error, setError] = useState<Error | null>(null);
   const reqRef = useRef(0);
 
-  const refetch = useCallback(async () => {
+  const baseRefetch = useCallback(async () => {
     if (!id) return;
     const reqId = ++reqRef.current;
     setLoading(true);
@@ -35,6 +36,8 @@ export function useTicket(id: string | null): UseTicketResult {
       if (reqRef.current === reqId) setLoading(false);
     }
   }, [id]);
+
+  const { refetch } = useStaleRefetch(baseRefetch, { enabled: !!id });
 
   useEffect(() => {
     if (!id) {

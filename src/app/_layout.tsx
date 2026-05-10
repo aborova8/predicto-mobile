@@ -26,6 +26,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppStateProvider, useAppState } from '@/state/AppStateContext';
+import { DataEpochProvider } from '@/state/DataEpochContext';
 import { ThemeProvider, useTheme, useThemeCtx } from '@/theme/ThemeContext';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -125,9 +126,11 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <AppStateProvider>
-            <ThemedShell />
-          </AppStateProvider>
+          <DataEpochProvider>
+            <AppStateProvider>
+              <ThemedShell />
+            </AppStateProvider>
+          </DataEpochProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
