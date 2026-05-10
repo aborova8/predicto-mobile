@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -11,11 +12,29 @@ export interface UseGoogleAuthOptions {
   onError?: (error: unknown) => void;
 }
 
-export function useGoogleAuth({ onIdToken, onError }: UseGoogleAuthOptions) {
+const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+
+// Google.useIdTokenAuthRequest throws synchronously if the current platform's
+// client ID is missing, so we can't call it at all until config is present.
+// Decide once at module load — the choice is stable for the app's lifetime,
+// so swapping the export here doesn't violate the rules of hooks.
+const platformClientId =
+  Platform.OS === 'ios' ? iosClientId : Platform.OS === 'android' ? androidClientId : webClientId;
+
+function useGoogleAuthDisabled(_options: UseGoogleAuthOptions) {
+  return {
+    ready: false,
+    promptAsync: async () => undefined,
+  };
+}
+
+function useGoogleAuthEnabled({ onIdToken, onError }: UseGoogleAuthOptions) {
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    iosClientId,
+    androidClientId,
+    webClientId,
   });
 
   useEffect(() => {
@@ -38,3 +57,5 @@ export function useGoogleAuth({ onIdToken, onError }: UseGoogleAuthOptions) {
     promptAsync,
   };
 }
+
+export const useGoogleAuth = platformClientId ? useGoogleAuthEnabled : useGoogleAuthDisabled;
