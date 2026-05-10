@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,7 +15,7 @@ import {
 
 import { Avatar } from '@/components/atoms/Avatar';
 import { Icon } from '@/components/atoms/Icon';
-import { BottomSheet } from '@/components/sheets/BottomSheet';
+import { ScreenHeader } from '@/components/nav/ScreenHeader';
 import { Ticket } from '@/components/ticket/Ticket';
 import { useComments } from '@/hooks/useComments';
 import { getPost } from '@/lib/api/feed';
@@ -32,7 +32,6 @@ interface ReplyTarget {
 
 export default function CommentsScreen() {
   const theme = useTheme();
-  const router = useRouter();
   const { postId } = useLocalSearchParams<{ postId: string }>();
   const { user } = useAppState();
   const currentUserId = user?.id ?? null;
@@ -96,22 +95,14 @@ export default function CommentsScreen() {
     ]);
   };
 
-  const onTicketPress = (ticketId: string) => {
-    router.push(`/ticket/${ticketId}`);
-  };
-
-  const title = (
-    <Text style={{ color: theme.text, fontFamily: Fonts.dispBold, fontSize: 16 }}>
-      Comments{' '}
-      <Text style={{ color: theme.text3, fontFamily: Fonts.monoRegular, fontSize: 12 }}>
-        {total}
-      </Text>
-    </Text>
-  );
-
   return (
-    <BottomSheet height="88%" title={title}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 8 }} keyboardShouldPersistTaps="handled">
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <ScreenHeader title={total > 0 ? `Comments · ${total}` : 'Comments'} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 8 }}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Ticket header */}
         {ticketView && post ? (
           <View style={[styles.postHead, { borderBottomColor: theme.lineSoft }]}>
@@ -132,7 +123,7 @@ export default function CommentsScreen() {
             {post.caption ? (
               <Text style={[styles.caption, { color: theme.text }]}>{post.caption}</Text>
             ) : null}
-            <Ticket ticket={ticketView} onPress={() => onTicketPress(ticketView.id)} />
+            <Ticket ticket={ticketView} />
           </View>
         ) : postError ? (
           <View style={[styles.postErrorBanner, { borderBottomColor: theme.lineSoft }]}>
@@ -231,7 +222,7 @@ export default function CommentsScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
-    </BottomSheet>
+    </View>
   );
 }
 

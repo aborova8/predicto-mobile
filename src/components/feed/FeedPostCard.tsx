@@ -13,7 +13,6 @@ interface FeedPostCardProps {
   onLike: (id: string) => void;
   onComment: (id: string) => void;
   onShare: (id: string) => void;
-  onTicketPress: (id: string) => void;
   onOpenUser: (userId: string) => void;
 }
 
@@ -22,7 +21,6 @@ function FeedPostCardImpl({
   onLike,
   onComment,
   onShare,
-  onTicketPress,
   onOpenUser,
 }: FeedPostCardProps) {
   const theme = useTheme();
@@ -56,7 +54,7 @@ function FeedPostCardImpl({
         <Text style={[styles.caption, { color: theme.text }]}>{post.caption}</Text>
       ) : null}
 
-      <Ticket ticket={post.ticket} onPress={() => onTicketPress(post.ticket.id)} />
+      <Ticket ticket={post.ticket} onPress={() => onComment(post.id)} />
 
       <View style={styles.actions}>
         <Pressable style={styles.action} onPress={() => onLike(post.id)}>

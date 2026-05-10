@@ -2,7 +2,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Crest } from '@/components/atoms/Crest';
 import { Pill } from '@/components/atoms/Pill';
-import { TEAMS } from '@/data/teams';
 import { withAlpha } from '@/lib/colors';
 import { calculateTotalOdds, fmtOdds } from '@/lib/format';
 import { getMatch } from '@/lib/matchCache';
@@ -77,21 +76,25 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
                 },
               ]}
             >
-              <View style={styles.crests}>
-                <Crest team={f.home} size={22} />
-                <View style={{ marginLeft: -6 }}>
-                  <Crest team={f.away} size={22} />
-                </View>
-              </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={styles.teamLine}>
                   {glyph ? (
                     <Text style={[styles.legGlyph, { color: accent ?? theme.text }]}>{glyph}</Text>
                   ) : null}
-                  <Text style={[styles.teamLineTxt, { color: accent ?? theme.text }]} numberOfLines={1}>
-                    {TEAMS[f.home]?.short ?? f.home}{' '}
-                    <Text style={{ color: theme.text3 }}>vs</Text>{' '}
-                    {TEAMS[f.away]?.short ?? f.away}
+                  <Crest team={f.home} name={f.homeName} size={18} logo={f.homeLogo} />
+                  <Text
+                    style={[styles.teamLineTxt, { color: accent ?? theme.text }]}
+                    numberOfLines={1}
+                  >
+                    {f.homeName ?? f.home}
+                  </Text>
+                  <Text style={[styles.vsTxt, { color: theme.text3 }]}>vs</Text>
+                  <Crest team={f.away} name={f.awayName} size={18} logo={f.awayLogo} />
+                  <Text
+                    style={[styles.teamLineTxt, { color: accent ?? theme.text }]}
+                    numberOfLines={1}
+                  >
+                    {f.awayName ?? f.away}
                   </Text>
                 </View>
                 <Text style={[styles.metaLine, { color: theme.text3 }]} numberOfLines={1}>
@@ -201,10 +204,6 @@ const styles = StyleSheet.create({
     marginHorizontal: -8,
     borderRadius: 8,
   },
-  crests: {
-    flexDirection: 'row',
-    width: 36,
-  },
   teamLine: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -220,6 +219,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.uiSemi,
     fontSize: 13,
     flexShrink: 1,
+  },
+  vsTxt: {
+    fontFamily: Fonts.monoRegular,
+    fontSize: 11,
+    paddingHorizontal: 2,
   },
   metaLine: {
     fontFamily: Fonts.monoRegular,

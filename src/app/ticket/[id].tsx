@@ -2,9 +2,9 @@ import { useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '@/components/atoms/Avatar';
+import { Crest } from '@/components/atoms/Crest';
 import { Icon } from '@/components/atoms/Icon';
 import { ScreenHeader } from '@/components/nav/ScreenHeader';
-import { TEAMS } from '@/data/teams';
 import { useTicket } from '@/hooks/useTicket';
 import { withAlpha } from '@/lib/colors';
 import { multiplyOdds } from '@/lib/format';
@@ -23,6 +23,10 @@ interface ViewModelLeg {
   league: string;
   home: string;
   away: string;
+  homeName: string;
+  awayName: string;
+  homeLogo?: string | null;
+  awayLogo?: string | null;
   kickoff: string;
   pick: '1' | 'X' | '2';
   odds: number;
@@ -62,6 +66,10 @@ export default function TicketDetailScreen() {
         league: f?.league ?? 'Match',
         home: f?.home ?? 'HOM',
         away: f?.away ?? 'AWY',
+        homeName: f?.homeName ?? f?.home ?? 'HOM',
+        awayName: f?.awayName ?? f?.away ?? 'AWY',
+        homeLogo: f?.homeLogo,
+        awayLogo: f?.awayLogo,
         kickoff: f?.kickoff ?? '',
         pick: l.pick,
         odds: f?.odds[l.pick] ?? 1,
@@ -113,7 +121,7 @@ export default function TicketDetailScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ScreenHeader
-        title={`Slip · #${ticketId.toUpperCase()}`}
+        title="Slip"
         right={<Icon name="share" size={16} color={theme.text2} />}
       />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}>
@@ -169,7 +177,7 @@ export default function TicketDetailScreen() {
         <View style={[styles.legsCard, { backgroundColor: theme.surface, borderColor: theme.line }]}>
           {legs.map((l, i) => {
             const lc = legStatusColor(theme, l.status);
-            const pickLabel = l.pick === '1' ? l.home : l.pick === '2' ? l.away : 'DRAW';
+            const pickLabel = l.pick === '1' ? l.homeName : l.pick === '2' ? l.awayName : 'DRAW';
             return (
               <View
                 key={i}
@@ -189,11 +197,17 @@ export default function TicketDetailScreen() {
                   </Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[styles.legTeams, { color: theme.text }]} numberOfLines={1}>
-                    {(TEAMS[l.home]?.short ?? l.home)}{' '}
-                    <Text style={{ color: theme.text3 }}>vs</Text>{' '}
-                    {(TEAMS[l.away]?.short ?? l.away)}
-                  </Text>
+                  <View style={styles.legTeamsRow}>
+                    <Crest team={l.home} name={l.homeName} size={20} logo={l.homeLogo} />
+                    <Text style={[styles.legTeams, { color: theme.text }]} numberOfLines={1}>
+                      {l.homeName}
+                    </Text>
+                    <Text style={[styles.legVs, { color: theme.text3 }]}>vs</Text>
+                    <Crest team={l.away} name={l.awayName} size={20} logo={l.awayLogo} />
+                    <Text style={[styles.legTeams, { color: theme.text }]} numberOfLines={1}>
+                      {l.awayName}
+                    </Text>
+                  </View>
                   <Text style={[styles.legMeta, { color: theme.text3 }]}>
                     {l.league} · {l.kickoff}{l.result ? ` · ${l.result}` : ''}
                   </Text>
@@ -294,6 +308,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
+  legTeamsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
   legGlyph: {
     width: 18,
     height: 18,
@@ -305,6 +324,12 @@ const styles = StyleSheet.create({
   legTeams: {
     fontFamily: Fonts.dispBold,
     fontSize: 13,
+    flexShrink: 1,
+  },
+  legVs: {
+    fontFamily: Fonts.monoRegular,
+    fontSize: 11,
+    paddingHorizontal: 2,
   },
   legMeta: {
     fontFamily: Fonts.monoRegular,

@@ -29,6 +29,8 @@ export interface Fixture {
   // show "Crystal Palace vs West Ham" for teams not in the static TEAMS dict.
   homeName?: string;
   awayName?: string;
+  homeLogo?: string | null;
+  awayLogo?: string | null;
   kickoff: string;
   day: number;
   odds: FixtureOdds;

@@ -57,7 +57,6 @@ export default function FeedScreen() {
     (id: string) => router.push({ pathname: '/comments', params: { postId: id } }),
     [router],
   );
-  const onTicketPress = useCallback((id: string) => router.push(`/ticket/${id}`), [router]);
   const onOpenUser = useCallback((uid: string) => router.push(`/user/${uid}`), [router]);
 
   const renderItem = useCallback<ListRenderItem<Post>>(
@@ -67,11 +66,10 @@ export default function FeedScreen() {
         onLike={like}
         onComment={onComment}
         onShare={noop}
-        onTicketPress={onTicketPress}
         onOpenUser={onOpenUser}
       />
     ),
-    [PostComponent, like, onComment, onTicketPress, onOpenUser],
+    [PostComponent, like, onComment, onOpenUser],
   );
 
   const showFirstLoad = loading && posts.length === 0 && !error;

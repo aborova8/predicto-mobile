@@ -13,7 +13,6 @@ interface FeedPostCompactProps {
   onLike: (id: string) => void;
   onComment: (id: string) => void;
   onShare: (id: string) => void;
-  onTicketPress: (id: string) => void;
   onOpenUser: (userId: string) => void;
 }
 
@@ -22,7 +21,6 @@ function FeedPostCompactImpl({
   onLike,
   onComment,
   onShare,
-  onTicketPress,
   onOpenUser,
 }: FeedPostCompactProps) {
   const theme = useTheme();
@@ -48,7 +46,7 @@ function FeedPostCompactImpl({
         {post.caption ? (
           <Text style={[styles.caption, { color: theme.text }]}>{post.caption}</Text>
         ) : null}
-        <Ticket ticket={post.ticket} onPress={() => onTicketPress(post.ticket.id)} />
+        <Ticket ticket={post.ticket} onPress={() => onComment(post.id)} />
         <View style={styles.actions}>
           <Pressable style={styles.action} onPress={() => onComment(post.id)}>
             <Icon name="comment" size={16} color={theme.text3} />

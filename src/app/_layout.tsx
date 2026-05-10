@@ -75,7 +75,7 @@ function RootStack() {
         <Stack.Screen name="change-password" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="legal" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="verify-email" options={{ presentation: 'card', animation: 'fade' }} />
-        <Stack.Screen name="comments" options={{ presentation: 'transparentModal', animation: 'fade' }} />
+        <Stack.Screen name="comments" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         <Stack.Screen name="review" options={{ presentation: 'transparentModal', animation: 'fade' }} />
         <Stack.Screen name="paywall" options={{ presentation: 'transparentModal', animation: 'fade' }} />
         <Stack.Screen name="user/[id]" options={{ presentation: 'transparentModal', animation: 'fade' }} />

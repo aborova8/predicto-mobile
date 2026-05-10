@@ -79,7 +79,6 @@ export default function GroupFeedScreen() {
             onLike={feed.like}
             onComment={(pid) => router.push({ pathname: '/comments', params: { postId: pid } })}
             onShare={() => {}}
-            onTicketPress={(tid) => router.push(`/ticket/${tid}`)}
             onOpenUser={(uid) => router.push(`/user/${uid}`)}
           />
         )}

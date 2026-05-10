@@ -35,11 +35,15 @@ export function MatchRow({ match, pick, onPick, locked }: MatchRowProps) {
         <Text style={[styles.kickoff, { color: theme.text3 }]}>{match.kickoff.toUpperCase()}</Text>
       </View>
       <View style={styles.mid}>
-        <Crest team={match.home} size={26} />
+        <Crest team={match.home} name={homeName} size={22} logo={match.homeLogo} />
         <Text style={[styles.teams, { color: theme.text }]} numberOfLines={1}>
-          {homeName} <Text style={{ color: theme.text3, fontFamily: Fonts.dispMedium }}>vs</Text> {awayName}
+          {homeName}
         </Text>
-        <Crest team={match.away} size={26} />
+        <Text style={[styles.vs, { color: theme.text3 }]}>vs</Text>
+        <Crest team={match.away} name={awayName} size={22} logo={match.awayLogo} />
+        <Text style={[styles.teams, { color: theme.text }]} numberOfLines={1}>
+          {awayName}
+        </Text>
       </View>
       <View style={styles.picks}>
         {(['1', 'X', '2'] as const).map((p) => (
@@ -77,13 +81,18 @@ const styles = StyleSheet.create({
   mid: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
     marginBottom: 10,
   },
   teams: {
-    flex: 1,
+    flexShrink: 1,
     fontFamily: Fonts.dispBold,
-    fontSize: 14,
+    fontSize: 13,
+  },
+  vs: {
+    fontFamily: Fonts.dispMedium,
+    fontSize: 12,
+    paddingHorizontal: 2,
   },
   picks: {
     flexDirection: 'row',

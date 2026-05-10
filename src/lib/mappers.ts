@@ -98,6 +98,8 @@ export function matchToFixture(m: BackendMatch, now: Date = new Date()): Fixture
     away: deriveAbbrev(m.awayTeam, m.awayAbbrev),
     homeName: m.homeTeam,
     awayName: m.awayTeam,
+    homeLogo: m.homeLogo,
+    awayLogo: m.awayLogo,
     kickoff: kickoffLabelFromParts(date, day),
     day,
     odds: { '1': m.homeOdds, X: m.drawOdds, '2': m.awayOdds },

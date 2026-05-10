@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { TEAMS } from '@/data/teams';
+import { Crest } from '@/components/atoms/Crest';
 import { calculateTotalOdds, fmtOdds } from '@/lib/format';
 import { getMatch } from '@/lib/matchCache';
 import { statusGlyph, ticketBannerLabel } from '@/lib/status';
@@ -42,9 +42,7 @@ export function TicketSlip({ ticket, onPress }: TicketSlipProps) {
       </View>
 
       <View style={styles.headerBand}>
-        <Text style={[styles.headerText, { color: theme.neon }]}>
-          PREDICTO • SLIP #{ticket.id.toUpperCase()}
-        </Text>
+        <Text style={[styles.headerText, { color: theme.neon }]}>PREDICTO</Text>
         <Text style={[styles.headerText, { color: theme.neon }]}>
           {ticket.legs.length}-LEG
         </Text>
@@ -86,10 +84,14 @@ export function TicketSlip({ ticket, onPress }: TicketSlipProps) {
                   {glyph ? (
                     <Text style={[styles.legGlyph, { color: glyphColor }]}>{glyph}</Text>
                   ) : null}
+                  <Crest team={f.home} name={f.homeName} size={18} logo={f.homeLogo} />
                   <Text style={styles.legTeamsTxt} numberOfLines={1}>
-                    {TEAMS[f.home]?.short ?? f.home}{' '}
-                    <Text style={{ color: '#999' }}>vs</Text>{' '}
-                    {TEAMS[f.away]?.short ?? f.away}
+                    {f.homeName ?? f.home}
+                  </Text>
+                  <Text style={styles.legVsTxt}>vs</Text>
+                  <Crest team={f.away} name={f.awayName} size={18} logo={f.awayLogo} />
+                  <Text style={styles.legTeamsTxt} numberOfLines={1}>
+                    {f.awayName ?? f.away}
                   </Text>
                 </View>
                 <View style={styles.legPickWrap}>
@@ -213,7 +215,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
+  },
+  legVsTxt: {
+    fontFamily: Fonts.monoRegular,
+    fontSize: 11,
+    color: '#999',
+    paddingHorizontal: 1,
   },
   legGlyph: {
     fontFamily: Fonts.monoBlack,

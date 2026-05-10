@@ -189,16 +189,23 @@ export default function UserSheetScreen() {
                   No slips yet.
                 </Text>
               ) : (
-                tickets.map((t) => (
-                  <Ticket
-                    key={t.id}
-                    ticket={backendTicketToTicket(t)}
-                    onPress={() => {
-                      router.dismissAll();
-                      router.push(`/ticket/${t.id}`);
-                    }}
-                  />
-                ))
+                tickets.map((t) => {
+                  const postId = t.post?.id;
+                  return (
+                    <Ticket
+                      key={t.id}
+                      ticket={backendTicketToTicket(t)}
+                      onPress={
+                        postId
+                          ? () => {
+                              router.dismissAll();
+                              router.push({ pathname: '/comments', params: { postId } });
+                            }
+                          : undefined
+                      }
+                    />
+                  );
+                })
               )}
             </View>
           </>

@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/atoms/Avatar';
+import { Crest } from '@/components/atoms/Crest';
 import { Icon } from '@/components/atoms/Icon';
 import { Pill } from '@/components/atoms/Pill';
 import { SectionHeader } from '@/components/atoms/SectionHeader';
@@ -374,10 +375,14 @@ function TicketHistoryCard({ ticket }: { ticket: BackendTicket }) {
   const statusLabel =
     ticket.status === 'VOID' ? 'VOID' : ticketStatusLabel(uiStatus);
   const statusGlyph = statusGlyphFn(uiStatus);
+  const postId = ticket.post?.id;
 
   return (
     <Pressable
-      onPress={() => router.push(`/ticket/${ticket.id}`)}
+      disabled={!postId}
+      onPress={() => {
+        if (postId) router.push({ pathname: '/comments', params: { postId } });
+      }}
       style={[
         styles.histCard,
         { backgroundColor: theme.surface, borderColor: theme.line },
@@ -416,8 +421,6 @@ function TicketHistoryCard({ ticket }: { ticket: BackendTicket }) {
           {legs.map((l) => {
             const ls = legStatusFromPick(l);
             const lc = legStatusColor(theme, ls);
-            const homeAbbrev = deriveAbbrev(l.match.homeTeam, l.match.homeAbbrev);
-            const awayAbbrev = deriveAbbrev(l.match.awayTeam, l.match.awayAbbrev);
             return (
               <View key={l.id} style={styles.legLine}>
                 <View
@@ -430,10 +433,32 @@ function TicketHistoryCard({ ticket }: { ticket: BackendTicket }) {
                     {statusGlyphFn(ls)}
                   </Text>
                 </View>
-                <Text style={{ color: theme.text, fontFamily: Fonts.monoBold, fontSize: 11 }}>
-                  {homeAbbrev}
-                  <Text style={{ color: theme.text3, fontFamily: Fonts.monoRegular }}> vs </Text>
-                  {awayAbbrev}
+                <Crest
+                  team={deriveAbbrev(l.match.homeTeam, l.match.homeAbbrev)}
+                  name={l.match.homeTeam}
+                  size={16}
+                  logo={l.match.homeLogo}
+                />
+                <Text
+                  style={{ color: theme.text, fontFamily: Fonts.uiSemi, fontSize: 11, flexShrink: 1 }}
+                  numberOfLines={1}
+                >
+                  {l.match.homeTeam}
+                </Text>
+                <Text style={{ color: theme.text3, fontFamily: Fonts.monoRegular, fontSize: 10 }}>
+                  vs
+                </Text>
+                <Crest
+                  team={deriveAbbrev(l.match.awayTeam, l.match.awayAbbrev)}
+                  name={l.match.awayTeam}
+                  size={16}
+                  logo={l.match.awayLogo}
+                />
+                <Text
+                  style={{ color: theme.text, fontFamily: Fonts.uiSemi, fontSize: 11, flexShrink: 1 }}
+                  numberOfLines={1}
+                >
+                  {l.match.awayTeam}
                 </Text>
                 <View style={{ flex: 1 }} />
                 <Text style={{ color: theme.text3, fontFamily: Fonts.monoRegular, fontSize: 11 }}>
@@ -450,9 +475,11 @@ function TicketHistoryCard({ ticket }: { ticket: BackendTicket }) {
           <Text style={[styles.histFootTxt, { color: theme.text3 }]}>
             {legsWon}/{legs.length} LEGS HIT
           </Text>
-          <Text style={[styles.histFootTxt, { color: theme.text3 }]}>
-            TAP FOR SLIP ›
-          </Text>
+          {postId ? (
+            <Text style={[styles.histFootTxt, { color: theme.text3 }]}>
+              TAP FOR COMMENTS ›
+            </Text>
+          ) : null}
         </View>
       ) : null}
     </Pressable>
