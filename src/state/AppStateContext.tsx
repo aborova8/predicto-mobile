@@ -13,10 +13,13 @@ import { AppState } from 'react-native';
 
 import { configureApi } from '@/lib/api';
 import { getEntitlements, type BackendEntitlements } from '@/lib/api/iap';
+import { getUnreadNotifications } from '@/lib/api/notifications';
 import { createTicket } from '@/lib/api/tickets';
 import * as authApi from '@/lib/auth/api';
 import * as authStorage from '@/lib/auth/storage';
 import { predictionFromPick } from '@/lib/mappers';
+import { partitionPicksByKickoff } from '@/lib/picks';
+import { useDataEpoch } from '@/state/DataEpochContext';
 import type { AuthUser, FeedLayout, FeedScope, Pick, TicketVariant } from '@/types/domain';
 
 type Picks = Record<string, Pick | null>;
@@ -61,6 +64,13 @@ interface AppStateCtx {
   // ── IAP entitlements (feature-flag layer; per-screen ticket eligibility lives in useEligibility) ──
   entitlements: BackendEntitlements | null;
   refreshEntitlements: () => Promise<void>;
+
+  // Shared so useNotifications.markRead can decrement the bell badge
+  // instantly instead of waiting for the 60s poll.
+  unreadNotifications: number;
+  refreshUnreadNotifications: () => Promise<void>;
+  decrementUnreadNotifications: (n?: number) => void;
+  clearUnreadNotifications: () => void;
 }
 
 const AppStateContext = createContext<AppStateCtx | null>(null);
@@ -113,6 +123,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [ticketVariant, setTicketVariantState] = useState<TicketVariant>('slip');
   const [feedLayout, setFeedLayoutState] = useState<FeedLayout>('card');
   const [entitlements, setEntitlements] = useState<BackendEntitlements | null>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const unreadReqRef = useRef(0);
+  const dataEpoch = useDataEpoch();
 
   const refreshEntitlements = useCallback(async () => {
     if (!tokenRef.current) {
@@ -127,6 +140,29 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     } catch {
       // Entitlements are advisory — never block UX on their refresh.
     }
+  }, []);
+
+  const refreshUnreadNotifications = useCallback(async () => {
+    if (!tokenRef.current) {
+      setUnreadNotifications((prev) => (prev === 0 ? prev : 0));
+      return;
+    }
+    const reqId = ++unreadReqRef.current;
+    try {
+      const { unread } = await getUnreadNotifications();
+      if (unreadReqRef.current !== reqId) return;
+      setUnreadNotifications((prev) => (prev === unread ? prev : unread));
+    } catch {
+      // Badge is advisory; silent failure.
+    }
+  }, []);
+
+  const decrementUnreadNotifications = useCallback((n: number = 1) => {
+    setUnreadNotifications((prev) => Math.max(0, prev - n));
+  }, []);
+
+  const clearUnreadNotifications = useCallback(() => {
+    setUnreadNotifications((prev) => (prev === 0 ? prev : 0));
   }, []);
 
   const applySession = useCallback(
@@ -212,6 +248,30 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     return () => sub.remove();
   }, [refreshEntitlements]);
 
+  // Poll the unread-notifications count once a minute while signed in. Reads
+  // get cleared immediately via decrementUnreadNotifications from
+  // useNotifications, so the bell badge no longer waits up to 60s.
+  const authedForUnread = token !== null;
+  useEffect(() => {
+    if (!authedForUnread) {
+      setUnreadNotifications(0);
+      return;
+    }
+    void refreshUnreadNotifications();
+    const interval = setInterval(() => void refreshUnreadNotifications(), 60_000);
+    return () => clearInterval(interval);
+  }, [authedForUnread, refreshUnreadNotifications]);
+
+  // Refresh on foreground (DataEpoch). Initialised to dataEpoch's current
+  // value so we don't double-fire with the poll's mount-time refresh.
+  const prevEpochRef = useRef(dataEpoch);
+  useEffect(() => {
+    if (prevEpochRef.current === dataEpoch) return;
+    prevEpochRef.current = dataEpoch;
+    if (!authedForUnread) return;
+    void refreshUnreadNotifications();
+  }, [dataEpoch, authedForUnread, refreshUnreadNotifications]);
+
   const setTicketVariant = useCallback((v: TicketVariant) => {
     setTicketVariantState(v);
     AsyncStorage.setItem(TICKET_VARIANT_KEY, v).catch(() => {});
@@ -294,14 +354,38 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
   const submitTicket = useCallback(
     async (opts: SubmitTicketOptions = {}) => {
-      const items = Object.entries(picks).filter(
-        (entry): entry is [string, Pick] => entry[1] !== null && entry[1] !== undefined,
-      );
-      if (items.length === 0) {
+      const hasAnyPick = Object.values(picks).some((p) => p);
+      if (!hasAnyPick) {
         throw new Error('Pick at least one match before submitting.');
       }
+      // Final client-side guard against a match that kicked off between the
+      // 30s screen tick and Lock-in. Backend is the source of truth and
+      // re-checks in a transaction — this just turns a 400 round-trip into
+      // a clear local error.
+      const { fresh, startedFixtures } = partitionPicksByKickoff(picks);
+      if (startedFixtures.length > 0) {
+        const startedIds = new Set(startedFixtures.map((f) => f.id));
+        setPicks((prev) => {
+          const next = { ...prev };
+          for (const id of startedIds) next[id] = null;
+          return next;
+        });
+        const n = startedFixtures.length;
+        if (fresh.length === 0) {
+          throw new Error(
+            n === 1
+              ? 'That match already kicked off — pick another.'
+              : `${n} matches kicked off — pick others.`,
+          );
+        }
+        throw new Error(
+          n === 1
+            ? '1 of your picks just kicked off and was removed. Review your slip and try again.'
+            : `${n} of your picks just kicked off and were removed. Review your slip and try again.`,
+        );
+      }
       const payload = {
-        picks: items.map(([matchId, pick]) => ({
+        picks: fresh.map(([matchId, pick]) => ({
           matchId,
           prediction: predictionFromPick(pick),
         })),
@@ -344,6 +428,10 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       ticketVariant, setTicketVariant,
       feedLayout, setFeedLayout,
       entitlements, refreshEntitlements,
+      unreadNotifications,
+      refreshUnreadNotifications,
+      decrementUnreadNotifications,
+      clearUnreadNotifications,
     }),
     [
       authed, authLoading, user, token,
@@ -353,6 +441,10 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       filter, ticketVariant, setTicketVariant,
       feedLayout, setFeedLayout,
       entitlements, refreshEntitlements,
+      unreadNotifications,
+      refreshUnreadNotifications,
+      decrementUnreadNotifications,
+      clearUnreadNotifications,
     ],
   );
 

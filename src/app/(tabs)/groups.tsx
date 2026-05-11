@@ -1,8 +1,10 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -51,6 +53,23 @@ export default function GroupsScreen() {
   const initialLoading = mineQ.loading && publicQ.loading && mine.length === 0 && discover.length === 0;
   const hasError = (mineQ.error || publicQ.error) && mine.length === 0 && discover.length === 0;
 
+  // FlatList's onEndReached without restructuring the two-section layout:
+  // fetch the next page of the long list (Discover) when the user scrolls
+  // near the bottom. The mine list usually fits in a single page so we let
+  // it surface its own footer if hasMore — calling fetchMore on the hidden
+  // list would burn a request the user can't see the result of.
+  const NEAR_BOTTOM_PX = 240;
+  const onScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - (contentOffset.y + layoutMeasurement.height);
+      if (distanceFromBottom > NEAR_BOTTOM_PX) return;
+      if (publicQ.hasMore) void publicQ.fetchMore();
+    },
+    [publicQ],
+  );
+
   const joinPublic = async (g: Group) => {
     if (!g.inviteCode) {
       setJoinOpen(true);
@@ -78,6 +97,8 @@ export default function GroupsScreen() {
         style={{ flex: 1, backgroundColor: theme.bg }}
         contentContainerStyle={{ paddingBottom: 120, paddingTop: insets.top + 6 }}
         keyboardShouldPersistTaps="handled"
+        onMomentumScrollEnd={onScrollEnd}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -193,7 +214,7 @@ export default function GroupsScreen() {
 
         {discover.length > 0 ? <SectionHeader title="Discover" /> : null}
         {discover.length > 0 ? (
-          <View style={{ paddingHorizontal: 16, gap: 8 }}>
+          <View style={{ paddingHorizontal: 16, gap: 8, paddingBottom: 12 }}>
             {discover.map((g) => (
               <Pressable
                 key={g.id}
@@ -230,6 +251,12 @@ export default function GroupsScreen() {
                 </Pressable>
               </Pressable>
             ))}
+          </View>
+        ) : null}
+
+        {publicQ.loadingMore ? (
+          <View style={styles.footerLoader}>
+            <ActivityIndicator color={theme.text2} />
           </View>
         ) : null}
       </ScrollView>
@@ -382,5 +409,9 @@ const styles = StyleSheet.create({
   joinTxt: {
     fontFamily: Fonts.dispBold,
     fontSize: 12,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
 });

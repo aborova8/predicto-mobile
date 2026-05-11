@@ -33,3 +33,27 @@ export function likePost(postId: string): Promise<{ ok: true }> {
 export function unlikePost(postId: string): Promise<{ ok: true }> {
   return api.delete<{ ok: true }>(`/api/feed/posts/${encodeURIComponent(postId)}/like`);
 }
+
+// Bookmarks (the post-action sheet's Save / Unsave). The Saved tab on the
+// Profile screen reads from `listSavedFeed` below — same response shape as
+// `listFeed`, so the mobile mapper (feedItemToPost) handles both.
+export function savePost(postId: string): Promise<{ ok: true }> {
+  return api.post<{ ok: true }>(`/api/feed/posts/${encodeURIComponent(postId)}/save`);
+}
+
+export function unsavePost(postId: string): Promise<{ ok: true }> {
+  return api.delete<{ ok: true }>(`/api/feed/posts/${encodeURIComponent(postId)}/save`);
+}
+
+export type ListSavedFeedQuery = {
+  cursor?: string;
+  limit?: number;
+};
+
+export function listSavedFeed(
+  q: ListSavedFeedQuery = {},
+): Promise<{ items: BackendFeedItem[]; nextCursor: string | null }> {
+  return api.get<{ items: BackendFeedItem[]; nextCursor: string | null }>(
+    `/api/feed/saved${buildQuery(q)}`,
+  );
+}

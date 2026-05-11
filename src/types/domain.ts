@@ -32,6 +32,11 @@ export interface Fixture {
   homeLogo?: string | null;
   awayLogo?: string | null;
   kickoff: string;
+  // ISO 8601 kickoff timestamp from the backend. The `kickoff` label above is
+  // a localised human-readable string; `kickoffAt` is the raw value used for
+  // client-side "has this match started?" comparisons (matches/review screens
+  // strip stale picks before submit so the user can't post-kickoff predict).
+  kickoffAt: string;
   day: number;
   odds: FixtureOdds;
 }
@@ -128,6 +133,10 @@ export interface Post {
   timeAgo: string;
   likes: number;
   liked: boolean;
+  // True when the viewer has bookmarked this post. Surfaces the "Unsave"
+  // option in the post-action sheet and excludes the post from the public
+  // "Save" affordance when already saved.
+  saved: boolean;
   comments: number;
   caption?: string;
   ticket: Ticket;
@@ -221,6 +230,9 @@ export interface LeaderboardEntry {
 export interface LeaderboardResponse {
   items: LeaderboardEntry[];
   viewer: LeaderboardEntry | null;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
 }
 
 export type NotificationKind =
@@ -320,7 +332,7 @@ export interface BackendFeedItem {
   author: BackendFeedAuthor;
   ticket: BackendTicket;
   counts: { likes: number; comments: number };
-  viewer: { liked: boolean };
+  viewer: { liked: boolean; saved: boolean };
 }
 
 // Returned by GET /api/comments/post/:postId. Tree-shaped — root nodes carry

@@ -15,9 +15,12 @@ import { MatchRow } from '@/components/MatchRow';
 import { Pill } from '@/components/atoms/Pill';
 import { useEligibility } from '@/hooks/useEligibility';
 import { useMatches } from '@/hooks/useMatches';
+import { useNow } from '@/hooks/useNow';
+import { partitionPicksByKickoff, startedPicksBanner } from '@/lib/picks';
 import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
+import type { Fixture } from '@/types/domain';
 
 export default function MatchesScreen() {
   const theme = useTheme();
@@ -31,8 +34,15 @@ export default function MatchesScreen() {
     refetch: refetchEligibility,
   } = useEligibility();
 
+  // Ticks every 30s so a fixture whose kickoff just passed disappears from the
+  // list without requiring the user to pull-to-refresh. The matching effect
+  // below also clears any picks for those now-stale matches so the slip stays
+  // submittable.
+  const now = useNow(30_000);
+  const nowMs = now.getTime();
   const [day, setDay] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [staleNotice, setStaleNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setDay((prev) => {
@@ -41,6 +51,22 @@ export default function MatchesScreen() {
       return days[0].index;
     });
   }, [days]);
+
+  // Auto-clear picks once their match kicks off so the slip never holds an
+  // unsubmittable pick. Banner surfaces the removal — backend would reject
+  // these on Lock-in anyway, this just avoids the confusing 400.
+  useEffect(() => {
+    const { startedFixtures } = partitionPicksByKickoff(picks, new Date(nowMs));
+    if (startedFixtures.length === 0) return;
+    for (const f of startedFixtures) setPick(f.id, null);
+    setStaleNotice(startedPicksBanner(startedFixtures));
+  }, [nowMs, picks, setPick]);
+
+  useEffect(() => {
+    if (!staleNotice) return;
+    const id = setTimeout(() => setStaleNotice(null), 4000);
+    return () => clearTimeout(id);
+  }, [staleNotice]);
 
   // Refetch eligibility whenever the screen regains focus (e.g., returning
   // from /review after a successful submit).
@@ -59,7 +85,16 @@ export default function MatchesScreen() {
     }
   }, [refetch, refetchEligibility]);
 
-  const grouped = day != null ? (byDay[day] ?? {}) : {};
+  // Filter out fixtures whose kickoff has already passed before grouping.
+  // `useMatches` only refetches on tab focus + 5-min staleness; without this
+  // client-side gate, a user sitting on the screen past kickoff would still
+  // see (and be able to tap) a started match.
+  const groupedRaw = day != null ? (byDay[day] ?? {}) : {};
+  const grouped: Record<string, Fixture[]> = {};
+  for (const [league, list] of Object.entries(groupedRaw)) {
+    const open = list.filter((f) => new Date(f.kickoffAt).getTime() > nowMs);
+    if (open.length > 0) grouped[league] = open;
+  }
   const showLoading = loading && days.length === 0;
   const canCreateTicket = eligibility?.canCreateTicket ?? false;
 
@@ -81,6 +116,18 @@ export default function MatchesScreen() {
           <Text style={[styles.updatedAt, { color: theme.text3 }]}>
             UPDATED {lastFetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
+        ) : null}
+        {staleNotice ? (
+          <View
+            style={[
+              styles.staleBanner,
+              { backgroundColor: theme.surface, borderColor: theme.loss },
+            ]}
+          >
+            <Text style={[styles.staleBannerText, { color: theme.text }]} numberOfLines={2}>
+              {staleNotice}
+            </Text>
+          </View>
         ) : null}
       </View>
 
@@ -148,6 +195,15 @@ export default function MatchesScreen() {
             </Text>
             <Text style={[styles.errorMsg, { color: theme.text2 }]}>
               Check back soon — matches load 7 days ahead.
+            </Text>
+          </View>
+        ) : Object.keys(grouped).length === 0 ? (
+          <View style={styles.center}>
+            <Text style={[styles.errorTitle, { color: theme.text }]}>
+              All matches have kicked off
+            </Text>
+            <Text style={[styles.errorMsg, { color: theme.text2 }]}>
+              Pick another day or pull to refresh.
             </Text>
           </View>
         ) : (
@@ -224,6 +280,17 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.6,
     marginTop: 6,
+  },
+  staleBanner: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  staleBannerText: {
+    fontFamily: Fonts.uiRegular,
+    fontSize: 12,
   },
   daysRow: {
     borderBottomWidth: StyleSheet.hairlineWidth,

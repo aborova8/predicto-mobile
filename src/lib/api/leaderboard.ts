@@ -4,7 +4,8 @@ import type { LeaderboardBoard, LeaderboardResponse, LeaderboardScope } from '@/
 export type ListLeaderboardQuery = {
   scope?: LeaderboardScope;
   board?: LeaderboardBoard;
-  limit?: number;
+  page?: number;
+  pageSize?: number;
 };
 
 export function getLeaderboard(q: ListLeaderboardQuery = {}): Promise<LeaderboardResponse> {

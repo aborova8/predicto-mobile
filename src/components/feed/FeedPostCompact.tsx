@@ -14,6 +14,7 @@ interface FeedPostCompactProps {
   onComment: (id: string) => void;
   onShare: (id: string) => void;
   onOpenUser: (userId: string) => void;
+  onOpenMenu?: (post: Post) => void;
 }
 
 function FeedPostCompactImpl({
@@ -22,6 +23,7 @@ function FeedPostCompactImpl({
   onComment,
   onShare,
   onOpenUser,
+  onOpenMenu,
 }: FeedPostCompactProps) {
   const theme = useTheme();
   const { username, avatarUrl } = post.author;
@@ -42,6 +44,20 @@ function FeedPostCompactImpl({
           <Text style={{ color: theme.text3, fontSize: 11 }}>·</Text>
           <Text style={[styles.handle, { color: theme.text3 }]}>{post.timeAgo}</Text>
           <View style={{ flex: 1 }} />
+          <Pressable
+            onPress={() => onOpenMenu?.(post)}
+            hitSlop={8}
+            style={styles.dotsBtn}
+            accessibilityRole="button"
+            accessibilityLabel="More actions"
+          >
+            {[0, 1, 2].map((i) => (
+              <View
+                key={i}
+                style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: theme.text3 }}
+              />
+            ))}
+          </Pressable>
         </View>
         {post.caption ? (
           <Text style={[styles.caption, { color: theme.text }]}>{post.caption}</Text>
@@ -114,6 +130,11 @@ const styles = StyleSheet.create({
   actionTxt: {
     fontFamily: Fonts.monoSemi,
     fontSize: 12,
+  },
+  dotsBtn: {
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 4,
   },
 });
 

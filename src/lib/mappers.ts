@@ -101,6 +101,7 @@ export function matchToFixture(m: BackendMatch, now: Date = new Date()): Fixture
     homeLogo: m.homeLogo,
     awayLogo: m.awayLogo,
     kickoff: kickoffLabelFromParts(date, day),
+    kickoffAt: m.kickoffAt,
     day,
     odds: { '1': m.homeOdds, X: m.drawOdds, '2': m.awayOdds },
   };
@@ -177,6 +178,7 @@ export function feedItemToPost(item: BackendFeedItem, now: Date = new Date()): P
     timeAgo: formatRelativeTime(item.createdAt, now),
     likes: item.counts.likes,
     liked: item.viewer.liked,
+    saved: item.viewer.saved,
     comments: item.counts.comments,
     caption: item.caption ?? undefined,
     ticket: backendTicketToTicket(item.ticket, now),

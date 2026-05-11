@@ -9,8 +9,21 @@ import type {
 
 export type GroupScope = 'mine' | 'public';
 
-export function listGroups(scope: GroupScope): Promise<{ items: BackendGroup[] }> {
-  return api.get<{ items: BackendGroup[] }>(`/api/groups${buildQuery({ scope })}`);
+export interface ListGroupsResult {
+  items: BackendGroup[];
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+export type ListGroupsQuery = {
+  scope: GroupScope;
+  page?: number;
+  pageSize?: number;
+};
+
+export function listGroups(q: ListGroupsQuery): Promise<ListGroupsResult> {
+  return api.get<ListGroupsResult>(`/api/groups${buildQuery({ ...q })}`);
 }
 
 export function getGroup(id: string): Promise<{ group: BackendGroup }> {

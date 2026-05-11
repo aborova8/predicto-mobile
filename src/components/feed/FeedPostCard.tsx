@@ -14,6 +14,9 @@ interface FeedPostCardProps {
   onComment: (id: string) => void;
   onShare: (id: string) => void;
   onOpenUser: (userId: string) => void;
+  // Fired when the user taps the row's "…" menu. Optional so existing
+  // call-sites that haven't wired the sheet yet still compile.
+  onOpenMenu?: (post: Post) => void;
 }
 
 function FeedPostCardImpl({
@@ -22,6 +25,7 @@ function FeedPostCardImpl({
   onComment,
   onShare,
   onOpenUser,
+  onOpenMenu,
 }: FeedPostCardProps) {
   const theme = useTheme();
   const { username, avatarUrl } = post.author;
@@ -40,14 +44,20 @@ function FeedPostCardImpl({
             @{username} · {post.timeAgo}
           </Text>
         </Pressable>
-        <View style={styles.dotsBtn}>
+        <Pressable
+          onPress={() => onOpenMenu?.(post)}
+          hitSlop={8}
+          style={styles.dotsBtn}
+          accessibilityRole="button"
+          accessibilityLabel="More actions"
+        >
           {[0, 1, 2].map((i) => (
             <View
               key={i}
               style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: theme.text3 }}
             />
           ))}
-        </View>
+        </Pressable>
       </View>
 
       {post.caption ? (

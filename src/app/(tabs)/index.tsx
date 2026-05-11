@@ -15,24 +15,27 @@ import { Icon } from '@/components/atoms/Icon';
 import { FeedHeader } from '@/components/feed/FeedHeader';
 import { FeedPostCard } from '@/components/feed/FeedPostCard';
 import { FeedPostCompact } from '@/components/feed/FeedPostCompact';
+import { PostActionSheet } from '@/components/sheets/PostActionSheet';
 import { useFeed } from '@/hooks/useFeed';
 import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
+import { sharePost } from '@/lib/share';
 import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
 import type { Post } from '@/types/domain';
 
-const noop = () => {};
-
 export default function FeedScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { filter, setFilter, feedLayout } = useAppState();
-  const { posts, loading, loadingMore, error, hasMore, refetch, fetchMore, like } = useFeed({
-    scope: filter,
-  });
+  const { posts, loading, loadingMore, error, hasMore, refetch, fetchMore, like, toggleSave } =
+    useFeed({ scope: filter });
   const { unread } = useUnreadNotifications();
   const [refreshing, setRefreshing] = useState(false);
+  // Track which post the action sheet is open for. Lives on this screen so
+  // the sheet can call toggleSave from the same useFeed hook (the optimistic
+  // update needs to land in the same posts state).
+  const [menuPost, setMenuPost] = useState<Post | null>(null);
 
   // Refetch on focus so that a slip submitted on the predict tab shows up
   // when the user navigates back here.
@@ -59,17 +62,28 @@ export default function FeedScreen() {
   );
   const onOpenUser = useCallback((uid: string) => router.push(`/user/${uid}`), [router]);
 
+  const onShare = useCallback((id: string) => {
+    // FlatList passes us the post id; look up the row from current state.
+    // Posts come from useFeed and stay referentially stable per render.
+    const target = posts.find((p) => p.id === id);
+    if (!target) return;
+    void sharePost(target);
+  }, [posts]);
+
+  const onOpenMenu = useCallback((p: Post) => setMenuPost(p), []);
+
   const renderItem = useCallback<ListRenderItem<Post>>(
     ({ item }) => (
       <PostComponent
         post={item}
         onLike={like}
         onComment={onComment}
-        onShare={noop}
+        onShare={onShare}
         onOpenUser={onOpenUser}
+        onOpenMenu={onOpenMenu}
       />
     ),
-    [PostComponent, like, onComment, onOpenUser],
+    [PostComponent, like, onComment, onShare, onOpenUser, onOpenMenu],
   );
 
   const showFirstLoad = loading && posts.length === 0 && !error;
@@ -144,6 +158,12 @@ export default function FeedScreen() {
           ) : null
         }
         contentContainerStyle={{ paddingBottom: 120 }}
+      />
+
+      <PostActionSheet
+        post={menuPost}
+        onClose={() => setMenuPost(null)}
+        onToggleSave={toggleSave}
       />
     </View>
   );

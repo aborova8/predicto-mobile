@@ -28,11 +28,28 @@ export default function UserSheetScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user: me } = useAppState();
   const { profile, tickets, badges, loading, notViewable, error } = useUserProfile(id);
-  const { friends, outgoing, sendRequest, removeFriend, block } = useFriends();
+  const {
+    friends,
+    incoming,
+    outgoing,
+    sendRequest,
+    acceptRequest,
+    declineRequest,
+    removeFriend,
+    block,
+  } = useFriends();
 
   const isMe = me?.id === id;
   const friendUser = friends.find((f) => f.id === id);
   const pendingOut = outgoing.find((r) => r.addresseeId === id);
+  const pendingIn = incoming.find((r) => r.requesterId === id);
+  const relationship: 'friend' | 'pendingOut' | 'pendingIn' | 'none' = friendUser
+    ? 'friend'
+    : pendingOut
+      ? 'pendingOut'
+      : pendingIn
+        ? 'pendingIn'
+        : 'none';
 
   return (
     <BottomSheet height="88%" title="Profile">
@@ -98,7 +115,7 @@ export default function UserSheetScreen() {
               </View>
               {!isMe ? (
                 <View style={styles.actionRow}>
-                  {friendUser ? (
+                  {relationship === 'friend' && (
                     <Pressable
                       onPress={() =>
                         Alert.alert('Remove friend', `Remove ${profile.username}?`, [
@@ -115,11 +132,30 @@ export default function UserSheetScreen() {
                       <Icon name="check" size={14} stroke={2.4} color={theme.text} />
                       <Text style={[styles.actSecTxt, { color: theme.text }]}>Friends</Text>
                     </Pressable>
-                  ) : pendingOut ? (
+                  )}
+                  {relationship === 'pendingOut' && (
                     <View style={[styles.actSec, { borderColor: theme.line }]}>
                       <Text style={[styles.actSecTxt, { color: theme.text3 }]}>Request sent</Text>
                     </View>
-                  ) : (
+                  )}
+                  {relationship === 'pendingIn' && pendingIn && (
+                    <>
+                      <Pressable
+                        onPress={() => void acceptRequest(pendingIn.id)}
+                        style={[styles.actPrim, { backgroundColor: theme.neon }]}
+                      >
+                        <Icon name="check" size={14} stroke={2.4} color="#06091A" />
+                        <Text style={styles.actPrimTxt}>Accept</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => void declineRequest(pendingIn.id)}
+                        style={[styles.actSec, { borderColor: theme.line }]}
+                      >
+                        <Text style={[styles.actSecTxt, { color: theme.text }]}>Decline</Text>
+                      </Pressable>
+                    </>
+                  )}
+                  {relationship === 'none' && (
                     <Pressable
                       onPress={() => void sendRequest(profile.id)}
                       style={[styles.actPrim, { backgroundColor: theme.neon }]}

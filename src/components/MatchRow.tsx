@@ -19,6 +19,13 @@ export function MatchRow({ match, pick, onPick, locked }: MatchRowProps) {
   const theme = useTheme();
   const homeName = match.homeName ?? TEAMS[match.home]?.name ?? match.home;
   const awayName = match.awayName ?? TEAMS[match.away]?.name ?? match.away;
+  // Defense-in-depth: MatchesScreen already filters started fixtures out of
+  // the rendered list and clears any matching picks, but if a stale cached
+  // fixture leaks through we must never let the user tap a pick on it. The
+  // backend would reject the ticket anyway — locking the row prevents the
+  // confusing 400 round-trip.
+  const hasStarted = new Date(match.kickoffAt).getTime() <= Date.now();
+  const rowLocked = locked || hasStarted;
 
   return (
     <View
@@ -27,12 +34,21 @@ export function MatchRow({ match, pick, onPick, locked }: MatchRowProps) {
         {
           backgroundColor: theme.surface,
           borderColor: pick ? theme.neon : theme.line,
+          opacity: hasStarted ? 0.55 : 1,
         },
       ]}
     >
       <View style={styles.head}>
         <Pill>{match.league}</Pill>
-        <Text style={[styles.kickoff, { color: theme.text3 }]}>{match.kickoff.toUpperCase()}</Text>
+        {hasStarted ? (
+          <Pill color={theme.loss} size="sm">
+            STARTED
+          </Pill>
+        ) : (
+          <Text style={[styles.kickoff, { color: theme.text3 }]}>
+            {match.kickoff.toUpperCase()}
+          </Text>
+        )}
       </View>
       <View style={styles.mid}>
         <Crest team={match.home} name={homeName} size={22} logo={match.homeLogo} />
@@ -52,8 +68,11 @@ export function MatchRow({ match, pick, onPick, locked }: MatchRowProps) {
             pick={p}
             odds={match.odds[p]}
             selected={pick === p}
-            locked={locked}
-            onPress={() => onPick(match.id, pick === p ? null : p)}
+            locked={rowLocked}
+            onPress={() => {
+              if (rowLocked) return;
+              onPick(match.id, pick === p ? null : p);
+            }}
           />
         ))}
       </View>

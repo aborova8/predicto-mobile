@@ -1,11 +1,12 @@
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
+  type ListRenderItem,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -57,18 +58,143 @@ export default function LeaderboardScreen() {
   const [board, setBoard] = useState<LeaderboardBoard>('points');
   const [showGroupPicker, setShowGroupPicker] = useState(false);
 
-  const { items, viewer, loading, error, refetch } = useLeaderboard(scope, board);
+  const { items, viewer, loading, loadingMore, hasMore, error, refetch, fetchMore } =
+    useLeaderboard(scope, board);
   const cfg = VALUES[board];
 
   const viewerInList = viewer ? items.some((i) => i.user.id === viewer.user.id) : false;
   const showStickyViewer = !!viewer && !viewerInList;
+  // Podium covers ranks 1-3 (top of page 1). Everything else flows into the
+  // FlatList. On page 2+, all rows have rank > 3 anyway so this filter is a
+  // no-op for appended pages.
   const listRows = items.filter((i) => i.rank > 3);
+
+  const renderRow = useCallback<ListRenderItem<LeaderboardEntry>>(
+    ({ item }) => (
+      <Row
+        entry={item}
+        cfg={cfg}
+        isMe={item.user.id === viewer?.user.id}
+        onPress={() => router.push(`/user/${item.user.id}`)}
+      />
+    ),
+    [cfg, viewer?.user.id, router],
+  );
+
+  const Header = (
+    <View>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+        <Text style={[styles.h1, { color: theme.text }]}>Standings</Text>
+        <Text style={[styles.sub, { color: theme.text2 }]}>{SUBTITLES[board]}</Text>
+
+        <View style={[styles.toggle, { backgroundColor: theme.surface, borderColor: theme.line }]}>
+          {BOARDS.map((b) => {
+            const a = b.id === board;
+            return (
+              <Pressable
+                key={b.id}
+                onPress={() => setBoard(b.id)}
+                style={[styles.toggleBtn, { backgroundColor: a ? theme.neon : 'transparent' }]}
+              >
+                <Text style={[styles.toggleTxt, { color: a ? '#06091A' : theme.text2 }]}>
+                  {b.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {SCOPES.map((s) => {
+            const a = s.id !== 'groups' && s.id === scope;
+            return (
+              <Pressable
+                key={s.id}
+                onPress={() => {
+                  if (s.id === 'groups') setShowGroupPicker(true);
+                  else setScope(s.id);
+                }}
+                style={[
+                  styles.scopePill,
+                  {
+                    backgroundColor: a ? theme.text : 'transparent',
+                    borderColor: a ? theme.text : theme.line,
+                  },
+                ]}
+              >
+                <Text style={[styles.scopeTxt, { color: a ? theme.bg : theme.text2 }]}>
+                  {s.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      {items.length >= 3 ? (
+        <Podium
+          rows={items}
+          cfg={cfg}
+          viewerId={viewer?.user.id ?? null}
+          onOpenUser={(id) => router.push(`/user/${id}`)}
+        />
+      ) : null}
+    </View>
+  );
+
+  const Footer = (
+    <>
+      {loadingMore ? (
+        <View style={styles.footerLoader}>
+          <ActivityIndicator color={theme.text2} />
+        </View>
+      ) : null}
+      {showStickyViewer ? (
+        <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
+          <Text style={[styles.stickyLabel, { color: theme.text3 }]}>YOUR RANK</Text>
+          <Row
+            entry={viewer!}
+            cfg={cfg}
+            isMe
+            onPress={() => router.push(`/user/${viewer!.user.id}`)}
+          />
+        </View>
+      ) : null}
+    </>
+  );
 
   return (
     <>
-      <ScrollView
+      <FlatList
         style={{ flex: 1, backgroundColor: theme.bg }}
-        contentContainerStyle={{ paddingBottom: 120, paddingTop: insets.top + 6 }}
+        contentContainerStyle={{
+          paddingBottom: 120,
+          paddingTop: insets.top + 6,
+          paddingHorizontal: 16,
+        }}
+        data={listRows}
+        keyExtractor={(r) => r.user.id}
+        renderItem={renderRow}
+        ListHeaderComponent={Header}
+        ListFooterComponent={Footer}
+        ListEmptyComponent={
+          loading && items.length === 0 ? (
+            <View style={styles.center}>
+              <ActivityIndicator color={theme.neon} />
+            </View>
+          ) : error && items.length === 0 ? (
+            <View style={styles.center}>
+              <Text style={[styles.errorText, { color: theme.loss }]}>{error.message}</Text>
+              <Pressable onPress={refetch} style={[styles.retry, { borderColor: theme.line }]}>
+                <Text style={[styles.retryText, { color: theme.text }]}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : items.length === 0 ? (
+            <View style={styles.center}>
+              <Text style={[styles.emptyText, { color: theme.text2 }]}>No standings yet.</Text>
+            </View>
+          ) : null
+        }
         refreshControl={
           <RefreshControl
             refreshing={loading && items.length > 0}
@@ -76,105 +202,9 @@ export default function LeaderboardScreen() {
             tintColor={theme.neon}
           />
         }
-      >
-        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-          <Text style={[styles.h1, { color: theme.text }]}>Standings</Text>
-          <Text style={[styles.sub, { color: theme.text2 }]}>{SUBTITLES[board]}</Text>
-
-          <View style={[styles.toggle, { backgroundColor: theme.surface, borderColor: theme.line }]}>
-            {BOARDS.map((b) => {
-              const a = b.id === board;
-              return (
-                <Pressable
-                  key={b.id}
-                  onPress={() => setBoard(b.id)}
-                  style={[styles.toggleBtn, { backgroundColor: a ? theme.neon : 'transparent' }]}
-                >
-                  <Text style={[styles.toggleTxt, { color: a ? '#06091A' : theme.text2 }]}>
-                    {b.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            {SCOPES.map((s) => {
-              const a = s.id !== 'groups' && s.id === scope;
-              return (
-                <Pressable
-                  key={s.id}
-                  onPress={() => {
-                    if (s.id === 'groups') setShowGroupPicker(true);
-                    else setScope(s.id);
-                  }}
-                  style={[
-                    styles.scopePill,
-                    {
-                      backgroundColor: a ? theme.text : 'transparent',
-                      borderColor: a ? theme.text : theme.line,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.scopeTxt, { color: a ? theme.bg : theme.text2 }]}>
-                    {s.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {loading && items.length === 0 ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={theme.neon} />
-          </View>
-        ) : error && items.length === 0 ? (
-          <View style={styles.center}>
-            <Text style={[styles.errorText, { color: theme.loss }]}>{error.message}</Text>
-            <Pressable onPress={refetch} style={[styles.retry, { borderColor: theme.line }]}>
-              <Text style={[styles.retryText, { color: theme.text }]}>Retry</Text>
-            </Pressable>
-          </View>
-        ) : items.length === 0 ? (
-          <View style={styles.center}>
-            <Text style={[styles.emptyText, { color: theme.text2 }]}>No standings yet.</Text>
-          </View>
-        ) : (
-          <>
-            <Podium
-              rows={items}
-              cfg={cfg}
-              viewerId={viewer?.user.id ?? null}
-              onOpenUser={(id) => router.push(`/user/${id}`)}
-            />
-
-            <View style={{ paddingHorizontal: 16, marginTop: 4 }}>
-              {listRows.map((r) => (
-                <Row
-                  key={r.user.id}
-                  entry={r}
-                  cfg={cfg}
-                  isMe={r.user.id === viewer?.user.id}
-                  onPress={() => router.push(`/user/${r.user.id}`)}
-                />
-              ))}
-            </View>
-
-            {showStickyViewer ? (
-              <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
-                <Text style={[styles.stickyLabel, { color: theme.text3 }]}>YOUR RANK</Text>
-                <Row
-                  entry={viewer!}
-                  cfg={cfg}
-                  isMe
-                  onPress={() => router.push(`/user/${viewer!.user.id}`)}
-                />
-              </View>
-            ) : null}
-          </>
-        )}
-      </ScrollView>
+        onEndReached={hasMore ? () => void fetchMore() : undefined}
+        onEndReachedThreshold={0.6}
+      />
 
       <GroupPickerSheet open={showGroupPicker} onClose={() => setShowGroupPicker(false)} />
     </>
@@ -325,7 +355,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   podium: {
-    marginHorizontal: 16,
     marginVertical: 16,
     paddingTop: 20,
     paddingHorizontal: 14,
@@ -409,5 +438,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1,
     marginBottom: 6,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
 });

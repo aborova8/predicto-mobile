@@ -1,8 +1,12 @@
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -18,9 +22,12 @@ import { Crest } from '@/components/atoms/Crest';
 import { Icon } from '@/components/atoms/Icon';
 import { Pill } from '@/components/atoms/Pill';
 import { SectionHeader } from '@/components/atoms/SectionHeader';
-import { errorMessage } from '@/lib/api';
+import { PostActionSheet } from '@/components/sheets/PostActionSheet';
+import { Ticket } from '@/components/ticket/Ticket';
+import { useSavedPosts } from '@/hooks/useSavedPosts';
+import { ApiError, errorMessage } from '@/lib/api';
 import { getAllBadges, getMyBadges } from '@/lib/api/badges';
-import { getMyProfile, getMyTickets } from '@/lib/api/users';
+import { getMyProfile, getMyTickets, updateMyProfileMultipart } from '@/lib/api/users';
 import { withAlpha } from '@/lib/colors';
 import { deriveAbbrev, legStatusFromPick } from '@/lib/mappers';
 import {
@@ -38,10 +45,11 @@ import type {
   BackendTicketStatus,
   BadgeDefinition,
   MyProfile,
+  Post,
   TicketStatus,
 } from '@/types/domain';
 
-type Filter = TicketStatus | 'all';
+type Filter = TicketStatus | 'all' | 'saved';
 
 function toUiStatus(s: BackendTicketStatus): TicketStatus {
   if (s === 'WON') return 'won';
@@ -64,7 +72,7 @@ export default function ProfileScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { signOut } = useAppState();
+  const { signOut, refreshUser } = useAppState();
   const [filter, setFilter] = useState<Filter>('all');
 
   const [profile, setProfile] = useState<MyProfile | null>(null);
@@ -74,24 +82,112 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Ticket-history pagination — first page loads with the rest of the profile,
+  // subsequent pages are appended on scroll-near-bottom. PAGE_SIZE matches the
+  // backend default (users.schemas.ts:41-44).
+  const TICKETS_PAGE_SIZE = 20;
+  const [ticketsPage, setTicketsPage] = useState(1);
+  const [ticketsTotal, setTicketsTotal] = useState(0);
+  const [loadingMoreTickets, setLoadingMoreTickets] = useState(false);
+  // Cursor-paginated, fetched lazily once the user lands on the Saved filter.
+  const savedQ = useSavedPosts({ enabled: filter === 'saved' });
+  const [menuPost, setMenuPost] = useState<Post | null>(null);
+  // Avatar upload happens in-place on this screen. We mirror the picker flow
+  // already used in /edit-profile so users can update their photo without
+  // leaving the profile.
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  async function onChangeAvatar() {
+    if (avatarUploading) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission required', 'Please grant photo access to change your avatar.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    setAvatarUploading(true);
+    try {
+      await updateMyProfileMultipart({
+        avatar: { uri: asset.uri, mimeType: asset.mimeType, fileName: asset.fileName },
+      });
+      // The multipart response only carries a summary (id/username/bio/avatar);
+      // re-fetch the full MyProfile so stats/level/xp stay current, and bump
+      // refreshUser so other screens (feed header avatar, notification rows)
+      // pick up the new avatarUrl too.
+      const [{ profile: fresh }] = await Promise.all([getMyProfile(), refreshUser()]);
+      setProfile(fresh);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to update avatar';
+      Alert.alert('Update failed', msg);
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
 
   async function loadAll() {
     setError(null);
     try {
       const [{ profile: p }, tx, allB, myB] = await Promise.all([
         getMyProfile(),
-        getMyTickets(1, 50),
+        getMyTickets(1, TICKETS_PAGE_SIZE),
         getAllBadges(),
         getMyBadges(),
       ]);
       setProfile(p);
       setTickets(tx.items);
+      setTicketsPage(tx.page);
+      setTicketsTotal(tx.total);
       setAllBadges(allB.items);
       setMyBadgeIds(new Set(myB.items.map((u) => u.badgeId)));
     } catch (err) {
       setError(errorMessage(err, 'Failed to load profile'));
     }
   }
+
+  // Append the next page of tickets when the user scrolls near the bottom.
+  // `total` from the backend lets us short-circuit once everything is loaded
+  // without an extra empty-page round-trip.
+  const hasMoreTickets = tickets.length < ticketsTotal;
+  const loadMoreTickets = useCallback(async () => {
+    if (!hasMoreTickets || loadingMoreTickets) return;
+    setLoadingMoreTickets(true);
+    try {
+      const next = await getMyTickets(ticketsPage + 1, TICKETS_PAGE_SIZE);
+      setTickets((prev) => [...prev, ...next.items]);
+      setTicketsPage(next.page);
+      setTicketsTotal(next.total);
+    } catch {
+      // Silent — the user can pull-to-refresh; surfacing a toast for an
+      // infinite-scroll failure mid-list adds more friction than value.
+    } finally {
+      setLoadingMoreTickets(false);
+    }
+  }, [hasMoreTickets, loadingMoreTickets, ticketsPage]);
+
+  const NEAR_BOTTOM_PX = 280;
+  const onScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - (contentOffset.y + layoutMeasurement.height);
+      if (distanceFromBottom >= NEAR_BOTTOM_PX) return;
+      // Either history or saved can need another page depending on the
+      // active filter. Trigger both — each has its own internal guard.
+      if (filter === 'saved') {
+        if (savedQ.hasMore) void savedQ.fetchMore();
+      } else {
+        void loadMoreTickets();
+      }
+    },
+    [filter, loadMoreTickets, savedQ],
+  );
 
   useEffect(() => {
     void (async () => {
@@ -143,9 +239,12 @@ export default function ProfileScreen() {
     filter === 'all' ? tickets : tickets.filter((t) => toUiStatus(t.status) === filter);
 
   return (
+    <>
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
       contentContainerStyle={{ paddingBottom: 120 }}
+      onMomentumScrollEnd={onScrollEnd}
+      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.text2} />
       }
@@ -171,11 +270,29 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.heroRow}>
-          <Avatar
-            author={{ username: profile.username, avatarUrl: profile.avatarUrl }}
-            size={72}
-            ring
-          />
+          <Pressable
+            onPress={onChangeAvatar}
+            disabled={avatarUploading}
+            style={styles.avatarWrap}
+          >
+            <Avatar
+              author={{ username: profile.username, avatarUrl: profile.avatarUrl }}
+              size={72}
+              ring
+            />
+            <View
+              style={[
+                styles.cameraBadge,
+                { backgroundColor: theme.neon, borderColor: theme.bg },
+              ]}
+            >
+              {avatarUploading ? (
+                <ActivityIndicator size="small" color="#06091A" />
+              ) : (
+                <Icon name="plus" size={12} color="#06091A" stroke={2.4} />
+              )}
+            </View>
+          </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={[styles.name, { color: theme.text }]}>{profile.username}</Text>
             <Text style={[styles.handle, { color: theme.text2 }]}>@{profile.username}</Text>
@@ -300,6 +417,9 @@ export default function ProfileScreen() {
           { id: 'won', label: 'Won', count: profile.stats.won },
           { id: 'lost', label: 'Lost', count: profile.stats.lost },
           { id: 'pending', label: 'Pending', count: profile.stats.pending },
+          // Saved feed is cursor-paginated so we don't know the true count
+          // until the user scrolls the whole way. Omit the badge.
+          { id: 'saved', label: 'Saved', count: null },
         ] as const).map((f) => {
           const a = filter === f.id;
           return (
@@ -315,26 +435,66 @@ export default function ProfileScreen() {
               ]}
             >
               <Text style={[styles.filterTxt, { color: a ? '#06091A' : theme.text2 }]}>
-                {f.label.toUpperCase()} <Text style={{ opacity: 0.65 }}>{f.count}</Text>
+                {f.label.toUpperCase()}
+                {f.count !== null ? <Text style={{ opacity: 0.65 }}> {f.count}</Text> : null}
               </Text>
             </Pressable>
           );
         })}
       </View>
 
-      <View style={{ paddingHorizontal: 16, gap: 10 }}>
-        {filteredTickets.length === 0 ? (
-          <View style={[styles.emptyCard, { borderColor: theme.line }]}>
-            <Text style={{ color: theme.text3, fontFamily: Fonts.monoMedium, fontSize: 11, letterSpacing: 0.5 }}>
-              NO {filter.toUpperCase()} TICKETS
-            </Text>
-          </View>
-        ) : null}
-        {filteredTickets.map((t) => (
-          <TicketHistoryCard key={t.id} ticket={t} />
-        ))}
-      </View>
+      {filter === 'saved' ? (
+        <View style={{ paddingHorizontal: 16, gap: 10 }}>
+          {savedQ.loading && savedQ.posts.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <ActivityIndicator color={theme.text3} />
+            </View>
+          ) : savedQ.posts.length === 0 ? (
+            <View style={[styles.emptyCard, { borderColor: theme.line }]}>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>No saved slips yet</Text>
+              <Text style={[styles.emptyBody, { color: theme.text2 }]}>
+                Tap the … on any feed slip and pick Save to keep it here.
+              </Text>
+            </View>
+          ) : (
+            savedQ.posts.map((p) => (
+              <SavedPostRow
+                key={p.id}
+                post={p}
+                onOpenMenu={() => setMenuPost(p)}
+                onOpen={() => router.push({ pathname: '/comments', params: { postId: p.id } })}
+              />
+            ))
+          )}
+        </View>
+      ) : (
+        <View style={{ paddingHorizontal: 16, gap: 10 }}>
+          {filteredTickets.length === 0 ? (
+            <View style={[styles.emptyCard, { borderColor: theme.line }]}>
+              <Text style={{ color: theme.text3, fontFamily: Fonts.monoMedium, fontSize: 11, letterSpacing: 0.5 }}>
+                NO {filter.toUpperCase()} TICKETS
+              </Text>
+            </View>
+          ) : null}
+          {filteredTickets.map((t) => (
+            <TicketHistoryCard key={t.id} ticket={t} />
+          ))}
+        </View>
+      )}
+
+      {(filter === 'saved' ? savedQ.loadingMore : loadingMoreTickets) ? (
+        <View style={styles.footerLoader}>
+          <ActivityIndicator color={theme.text2} />
+        </View>
+      ) : null}
     </ScrollView>
+
+    <PostActionSheet
+      post={menuPost}
+      onClose={() => setMenuPost(null)}
+      onToggleSave={savedQ.toggleSave}
+    />
+    </>
   );
 }
 
@@ -486,6 +646,56 @@ function TicketHistoryCard({ ticket }: { ticket: BackendTicket }) {
   );
 }
 
+// Render a saved feed post as its slip plus a dots-menu trigger. We use the
+// existing `Ticket` component (which renders the mobile-side slip) rather
+// than TicketHistoryCard because the saved list source — feed posts — gives
+// us the mobile `Ticket` shape via `feedItemToPost`, not BackendTicket.
+function SavedPostRow({
+  post,
+  onOpen,
+  onOpenMenu,
+}: {
+  post: Post;
+  onOpen: () => void;
+  onOpenMenu: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        borderWidth: 1,
+        borderColor: theme.line,
+        borderRadius: 14,
+        backgroundColor: theme.surface,
+        paddingTop: 10,
+        paddingHorizontal: 10,
+        paddingBottom: 6,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 4,
+          paddingBottom: 6,
+        }}
+      >
+        <Text
+          style={{ color: theme.text3, fontFamily: Fonts.monoMedium, fontSize: 11, letterSpacing: 0.5 }}
+          numberOfLines={1}
+        >
+          {post.author.username.toUpperCase()} · {post.timeAgo.toUpperCase()}
+        </Text>
+        <Pressable onPress={onOpenMenu} hitSlop={10} accessibilityLabel="More actions">
+          <Text style={{ color: theme.text2, fontSize: 18, lineHeight: 18 }}>···</Text>
+        </Pressable>
+      </View>
+      <Ticket ticket={post.ticket} onPress={onOpen} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   center: {
     flex: 1,
@@ -525,6 +735,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
+  },
+  avatarWrap: {
+    position: 'relative',
+  },
+  cameraBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   name: {
     fontFamily: Fonts.dispBlack,
@@ -681,6 +905,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: 'dashed',
     borderRadius: 12,
+    gap: 6,
+  },
+  emptyTitle: {
+    fontFamily: Fonts.dispBold,
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  emptyBody: {
+    fontFamily: Fonts.uiRegular,
+    fontSize: 12,
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
   histCard: {
     borderWidth: 1,
@@ -753,5 +989,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.monoMedium,
     fontSize: 10,
     letterSpacing: 0.5,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
 });

@@ -6,6 +6,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from '@/lib/api/notifications';
+import { useAppState } from '@/state/AppStateContext';
 import type { BackendNotification } from '@/types/domain';
 
 interface State {
@@ -31,6 +32,7 @@ export interface UseNotificationsResult {
 
 export function useNotifications(opts: { unreadOnly?: boolean } = {}): UseNotificationsResult {
   const { unreadOnly } = opts;
+  const { decrementUnreadNotifications, clearUnreadNotifications } = useAppState();
   const [state, setState] = useState<State>(EMPTY_STATE);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -105,13 +107,14 @@ export function useNotifications(opts: { unreadOnly?: boolean } = {}): UseNotifi
       };
     });
     if (!didMutate) return;
+    decrementUnreadNotifications(1);
     try {
       await markNotificationRead(id);
     } catch (err) {
       void refresh();
       throw err;
     }
-  }, [refresh]);
+  }, [refresh, decrementUnreadNotifications]);
 
   const markAllRead = useCallback(async () => {
     if (state.unreadCount === 0) return;
@@ -121,31 +124,34 @@ export function useNotifications(opts: { unreadOnly?: boolean } = {}): UseNotifi
       unreadCount: 0,
       items: prev.items.map((n) => (n.readAt ? n : { ...n, readAt: now })),
     }));
+    clearUnreadNotifications();
     try {
       await markAllNotificationsRead();
     } catch (err) {
       void refresh();
       throw err;
     }
-  }, [refresh, state.unreadCount]);
+  }, [refresh, state.unreadCount, clearUnreadNotifications]);
 
   const remove = useCallback(async (id: string) => {
+    let wasUnread = false;
     setState((prev) => {
       const target = prev.items.find((n) => n.id === id);
-      const wasUnread = target && !target.readAt;
+      wasUnread = !!target && !target.readAt;
       return {
         ...prev,
         items: prev.items.filter((n) => n.id !== id),
         unreadCount: wasUnread ? Math.max(0, prev.unreadCount - 1) : prev.unreadCount,
       };
     });
+    if (wasUnread) decrementUnreadNotifications(1);
     try {
       await deleteApi(id);
     } catch (err) {
       void refresh();
       throw err;
     }
-  }, [refresh]);
+  }, [refresh, decrementUnreadNotifications]);
 
   return {
     items: state.items,

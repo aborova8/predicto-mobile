@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { likePost as likePostApi, listFeed, unlikePost as unlikePostApi } from '@/lib/api/feed';
+import {
+  likePost as likePostApi,
+  listFeed,
+  savePost as savePostApi,
+  unlikePost as unlikePostApi,
+  unsavePost as unsavePostApi,
+} from '@/lib/api/feed';
 import type { FeedScope } from '@/lib/api/feed';
 import { feedItemToPost } from '@/lib/mappers';
 import type { Post } from '@/types/domain';
@@ -21,6 +27,7 @@ export interface UseFeedResult {
   refetch: () => Promise<void>;
   fetchMore: () => Promise<void>;
   like: (postId: string) => void;
+  toggleSave: (postId: string) => void;
 }
 
 export function useFeed({ scope, groupId }: UseFeedOptions): UseFeedResult {
@@ -105,5 +112,32 @@ export function useFeed({ scope, groupId }: UseFeedOptions): UseFeedResult {
     });
   }, []);
 
-  return { posts, loading, loadingMore, error, hasMore, refetch, fetchMore, like };
+  const toggleSave = useCallback((postId: string) => {
+    const snapshot = (() => {
+      const t = postsRef.current.find((p) => p.id === postId);
+      return t ? { saved: t.saved } : null;
+    })();
+    if (!snapshot) return;
+    setPosts((prev) => {
+      const idx = prev.findIndex((p) => p.id === postId);
+      if (idx === -1) return prev;
+      const next = prev.slice();
+      next[idx] = { ...next[idx], saved: !next[idx].saved };
+      return next;
+    });
+    const wasSaved = snapshot.saved;
+    const promise = wasSaved ? unsavePostApi(postId) : savePostApi(postId);
+    promise.catch(() => {
+      // Roll back so the UI doesn't lie about persistence.
+      setPosts((prev) => {
+        const idx = prev.findIndex((p) => p.id === postId);
+        if (idx === -1) return prev;
+        const next = prev.slice();
+        next[idx] = { ...next[idx], saved: snapshot.saved };
+        return next;
+      });
+    });
+  }, []);
+
+  return { posts, loading, loadingMore, error, hasMore, refetch, fetchMore, like, toggleSave };
 }
