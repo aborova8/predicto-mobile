@@ -32,19 +32,29 @@ import { ThemeProvider, useTheme, useThemeCtx } from '@/theme/ThemeContext';
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function AuthGate() {
-  const { authed, authLoading } = useAppState();
+  const { authed, authLoading, user } = useAppState();
   const segments = useSegments();
   const router = useRouter();
   const inAuthGroup = segments[0] === '(auth)';
+  const onVerifyScreen = segments[0] === 'verify-email';
+  // Only email/password signups need to verify — Google and Apple flows
+  // already pass `emailVerified: true` on creation (auth.service.ts).
+  const needsEmailVerify = !!user && user.provider === 'LOCAL' && !user.emailVerified;
 
   useEffect(() => {
     if (authLoading) return;
-    if (!authed && !inAuthGroup) {
-      router.replace('/(auth)/sign-in');
-    } else if (authed && inAuthGroup) {
+    if (!authed) {
+      if (!inAuthGroup) router.replace('/(auth)/sign-in');
+      return;
+    }
+    if (needsEmailVerify) {
+      if (!onVerifyScreen) router.replace('/verify-email');
+      return;
+    }
+    if (inAuthGroup || onVerifyScreen) {
       router.replace('/(tabs)');
     }
-  }, [authed, authLoading, inAuthGroup, router]);
+  }, [authed, authLoading, inAuthGroup, onVerifyScreen, needsEmailVerify, router]);
 
   return null;
 }

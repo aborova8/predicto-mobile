@@ -18,8 +18,10 @@ import { SectionHeader } from '@/components/atoms/SectionHeader';
 import { ScreenHeader } from '@/components/nav/ScreenHeader';
 import { useFriends } from '@/hooks/useFriends';
 import { useSettings } from '@/hooks/useSettings';
+import * as Clipboard from 'expo-clipboard';
+
 import { ApiError } from '@/lib/api';
-import { deleteAccount } from '@/lib/api/users';
+import { deleteAccount, exportMyData } from '@/lib/api/users';
 import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme, useThemeCtx } from '@/theme/ThemeContext';
@@ -36,6 +38,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const {
     signOut,
+    revokeAllOtherSessions,
     ticketVariant,
     setTicketVariant,
     feedLayout,
@@ -44,6 +47,29 @@ export default function SettingsScreen() {
   const { settings, updatePrivacy, updateNotificationPrefs } = useSettings();
   const { friends } = useFriends();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const onExportData = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const data = await exportMyData();
+      const json = JSON.stringify(data, null, 2);
+      await Clipboard.setStringAsync(json);
+      const kb = Math.max(1, Math.round(json.length / 1024));
+      Alert.alert(
+        'Data exported',
+        `${kb} KB copied to your clipboard. Paste it into a notes app or email to keep a copy.`,
+      );
+    } catch (err) {
+      Alert.alert(
+        'Export failed',
+        err instanceof ApiError ? err.message : 'Could not export your data right now.',
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const privacySummary = privacyLabel(settings?.privacy?.profilePublic);
   const subSummary = settings?.user
@@ -66,6 +92,35 @@ export default function SettingsScreen() {
             label="Change password"
             divided
             onPress={() => router.push('/change-password')}
+          />
+          <Item
+            icon="logout"
+            label="Sign out other devices"
+            divided
+            onPress={() =>
+              Alert.alert(
+                'Sign out other devices?',
+                'Other phones, tablets, and browsers signed into this account will be signed out immediately. This device stays signed in.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Sign out',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await revokeAllOtherSessions();
+                        Alert.alert('Done', 'All other sessions have been signed out.');
+                      } catch (err) {
+                        Alert.alert(
+                          'Failed',
+                          err instanceof ApiError ? err.message : 'Could not sign out other devices.',
+                        );
+                      }
+                    },
+                  },
+                ],
+              )
+            }
           />
           <Item
             icon="people"
@@ -203,6 +258,12 @@ export default function SettingsScreen() {
             label="Privacy policy"
             divided
             onPress={() => router.push({ pathname: '/legal', params: { doc: 'privacy' } })}
+          />
+          <Item
+            icon="share"
+            label={exporting ? 'Exporting…' : 'Export my data'}
+            divided
+            onPress={onExportData}
           />
         </Card>
 

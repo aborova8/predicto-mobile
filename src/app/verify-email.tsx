@@ -27,7 +27,7 @@ export default function VerifyEmailScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, refreshUser } = useAppState();
+  const { user, refreshUser, signOut } = useAppState();
   const [step, setStep] = useState<Step>('sending');
   const [code, setCode] = useState<string[]>(['', '', '', '', '', '']);
   const [busy, setBusy] = useState(false);
@@ -157,6 +157,19 @@ export default function VerifyEmailScreen() {
                 <Text onPress={onResend} style={{ color: theme.neon, fontFamily: Fonts.monoSemi }}>
                   RESEND CODE
                 </Text>
+              </Text>
+              <Text
+                onPress={() => void signOut()}
+                style={{
+                  marginTop: 12,
+                  color: theme.text3,
+                  fontFamily: Fonts.monoMedium,
+                  fontSize: 11,
+                  letterSpacing: 0.5,
+                }}
+              >
+                WRONG ACCOUNT?{' '}
+                <Text style={{ color: theme.text2, fontFamily: Fonts.monoSemi }}>SIGN OUT</Text>
               </Text>
             </View>
           </>

@@ -57,6 +57,8 @@ export interface AuthUser {
   streak: number;
   xp: number;
   level: number;
+  emailVerified: boolean;
+  provider: AuthProvider;
   createdAt: string;
 }
 

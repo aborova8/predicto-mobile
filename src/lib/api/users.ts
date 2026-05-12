@@ -144,3 +144,9 @@ export function updateNotificationPrefs(
 export function deleteAccount(): Promise<{ ok: true }> {
   return api.delete<{ ok: true }>('/api/users/me/settings/account', { confirm: 'DELETE' });
 }
+
+// Returns the user's data export as a fully-parsed JSON object. The endpoint
+// also serves an attachment Content-Disposition for browser downloads.
+export function exportMyData(): Promise<unknown> {
+  return api.get<unknown>('/api/users/me/export');
+}

@@ -21,6 +21,7 @@ import { Avatar } from '@/components/atoms/Avatar';
 import { Crest } from '@/components/atoms/Crest';
 import { Icon } from '@/components/atoms/Icon';
 import { Pill } from '@/components/atoms/Pill';
+import { ProHint } from '@/components/atoms/ProHint';
 import { SectionHeader } from '@/components/atoms/SectionHeader';
 import { PostActionSheet } from '@/components/sheets/PostActionSheet';
 import { Ticket } from '@/components/ticket/Ticket';
@@ -349,6 +350,10 @@ export default function ProfileScreen() {
             />
           </View>
         </View>
+      </View>
+
+      <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
+        <ProHint variant="card" />
       </View>
 
       <View style={{ marginTop: 18 }}>

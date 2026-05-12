@@ -97,3 +97,9 @@ export async function getMe(): Promise<AuthUser> {
 export function signOutRemote() {
   return api.post<{ ok: true }>('/api/auth/logout');
 }
+
+// Revokes every JWT minted before now for this user, then returns a freshly
+// signed token for the caller so they aren't locked out by their own action.
+export function revokeAllOtherSessions() {
+  return api.post<AuthResponse & { revokedAt: string }>('/api/auth/sessions/revoke-all');
+}

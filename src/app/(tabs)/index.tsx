@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { Icon } from '@/components/atoms/Icon';
+import { ProHint } from '@/components/atoms/ProHint';
 import { FeedHeader } from '@/components/feed/FeedHeader';
 import { FeedPostCard } from '@/components/feed/FeedPostCard';
 import { FeedPostCompact } from '@/components/feed/FeedPostCompact';
@@ -94,13 +95,21 @@ export default function FeedScreen() {
         data={posts}
         keyExtractor={(p) => p.id}
         ListHeaderComponent={
-          <FeedHeader
-            filter={filter}
-            onFilter={setFilter}
-            onOpenSearch={() => router.push('/search')}
-            onOpenNotifications={() => router.push('/notifications')}
-            unreadNotifications={unread > 0}
-          />
+          <View style={{ backgroundColor: theme.bg }}>
+            <FeedHeader
+              filter={filter}
+              onFilter={setFilter}
+              onOpenSearch={() => router.push('/search')}
+              onOpenNotifications={() => router.push('/notifications')}
+              unreadNotifications={unread > 0}
+            />
+            <ProHint
+              variant="tip"
+              title="Go Pro"
+              subtitle="Unlimited slips, no ads"
+              style={styles.proHint}
+            />
+          </View>
         }
         stickyHeaderIndices={[0]}
         renderItem={renderItem}
@@ -170,6 +179,11 @@ export default function FeedScreen() {
 }
 
 const styles = StyleSheet.create({
+  proHint: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+  },
   empty: {
     paddingVertical: 60,
     paddingHorizontal: 32,

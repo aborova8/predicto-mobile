@@ -19,6 +19,7 @@ import * as authApi from '@/lib/auth/api';
 import * as authStorage from '@/lib/auth/storage';
 import { predictionFromPick } from '@/lib/mappers';
 import { partitionPicksByKickoff } from '@/lib/picks';
+import { registerPushForSession, unregisterPushForSession } from '@/lib/push';
 import { useDataEpoch } from '@/state/DataEpochContext';
 import type { AuthUser, FeedLayout, FeedScope, Pick, TicketVariant } from '@/types/domain';
 
@@ -39,6 +40,7 @@ interface AppStateCtx {
   signInWithGoogle: (idToken: string, username?: string) => Promise<void>;
   signInWithApple: (payload: authApi.AppleSignInPayload) => Promise<void>;
   signOut: () => Promise<void>;
+  revokeAllOtherSessions: () => Promise<void>;
   refreshUser: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   verifyPasswordResetCode: (email: string, code: string) => Promise<void>;
@@ -104,6 +106,8 @@ function sameAuthUser(a: AuthUser | null, b: AuthUser | null): boolean {
     a.role === b.role &&
     a.points === b.points &&
     a.livesBalance === b.livesBalance &&
+    a.emailVerified === b.emailVerified &&
+    a.provider === b.provider &&
     a.createdAt === b.createdAt
   );
 }
@@ -172,6 +176,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         setToken(next.token);
         setUser(next.user);
         void refreshEntitlements();
+        // Register for push notifications. registerPushForSession swallows
+        // its own errors — never block sign-in on permission prompts.
+        void registerPushForSession({ force: true });
       } else {
         tokenRef.current = null;
         setToken(null);
@@ -183,7 +190,10 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   );
 
   const signOut = useCallback(async () => {
-    // Best-effort remote call; never block local logout on the network.
+    // Best-effort remote unregister BEFORE we drop the token — once
+    // applySession(null) runs, the api `getToken` returns null and the
+    // DELETE would 401.
+    await unregisterPushForSession();
     try {
       if (tokenRef.current) await authApi.signOutRemote();
     } catch {}
@@ -240,10 +250,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
   // Refresh entitlements when the app comes back to the foreground — webhook
   // events from Apple/Google may have updated subscription status while the
-  // app was backgrounded.
+  // app was backgrounded. Also re-register the push token: lastSeenAt updates
+  // server-side so dormant rows can be pruned, and a rotated token (rare but
+  // possible) is picked up here.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void refreshEntitlements();
+      if (state !== 'active') return;
+      void refreshEntitlements();
+      if (tokenRef.current) void registerPushForSession();
     });
     return () => sub.remove();
   }, [refreshEntitlements]);
@@ -327,6 +341,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     setUser((prev) => (sameAuthUser(prev, fresh) ? prev : fresh));
     await authStorage.updateCachedUser(fresh);
   }, []);
+
+  const revokeAllOtherSessions = useCallback(async () => {
+    // Backend bumps tokenInvalidBefore for the user (killing every JWT minted
+    // before now) and returns a freshly-signed token. We swap the in-memory
+    // and persisted token to that fresh one so the user stays signed in here.
+    const res = await authApi.revokeAllOtherSessions();
+    await persistAndApply(res);
+  }, [persistAndApply]);
 
   const requestPasswordReset = useCallback(async (email: string) => {
     await authApi.requestPasswordReset(email);
@@ -418,6 +440,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       signInWithGoogle,
       signInWithApple,
       signOut,
+      revokeAllOtherSessions,
       refreshUser,
       requestPasswordReset,
       verifyPasswordResetCode,
@@ -435,7 +458,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }),
     [
       authed, authLoading, user, token,
-      signIn, signUp, signInWithGoogle, signInWithApple, signOut, refreshUser,
+      signIn, signUp, signInWithGoogle, signInWithApple, signOut, revokeAllOtherSessions, refreshUser,
       requestPasswordReset, verifyPasswordResetCode, confirmPasswordReset,
       picks, setPick, clearPicks, pickCount, submitTicket,
       filter, ticketVariant, setTicketVariant,

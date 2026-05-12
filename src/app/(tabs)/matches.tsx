@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MatchRow } from '@/components/MatchRow';
 import { Pill } from '@/components/atoms/Pill';
+import { ProHint } from '@/components/atoms/ProHint';
 import { useEligibility } from '@/hooks/useEligibility';
 import { useMatches } from '@/hooks/useMatches';
 import { useNow } from '@/hooks/useNow';
@@ -103,11 +104,16 @@ export default function MatchesScreen() {
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <View style={styles.headerRow}>
           <Text style={[styles.title, { color: theme.text }]}>Build your slip</Text>
-          <Pill color={ticketsLeft > 0 ? theme.neon : theme.loss} size="md">
-            {eligibility?.unlimitedTickets
-              ? 'UNLIMITED'
-              : `${ticketsLeft} TICKET${ticketsLeft === 1 ? '' : 'S'} LEFT`}
-          </Pill>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Pill color={ticketsLeft > 0 ? theme.neon : theme.loss} size="md">
+              {eligibility?.unlimitedTickets
+                ? 'UNLIMITED'
+                : `${ticketsLeft} TICKET${ticketsLeft === 1 ? '' : 'S'} LEFT`}
+            </Pill>
+            {!eligibility?.unlimitedTickets ? (
+              <ProHint variant="inline" title="Unlimited with Pro" />
+            ) : null}
+          </View>
         </View>
         <Text style={[styles.sub, { color: theme.text2 }]}>
           Pick 1 (home), X (draw) or 2 (away). Stack them up.
