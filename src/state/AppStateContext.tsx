@@ -144,13 +144,25 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       setEntitlements((prev) => (prev === null ? prev : null));
       return;
     }
+    // Tight 5s timeout — inheriting the api layer's 30s default leaves the
+    // paywall stuck in an indeterminate state on slow networks, where the
+    // user can't tell "checking subscription" from "not subscribed". The
+    // call is advisory so timing out is the same as "no entitlement".
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
-      const { entitlements: e } = await getEntitlements();
+      const { entitlements: e } = await Promise.race([
+        getEntitlements(),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('entitlements timeout')), 5000);
+        }),
+      ]);
       // Skip the re-render when nothing material changed — foreground refreshes
       // fire often and entitlements rarely move.
       setEntitlements((prev) => (sameEntitlements(prev, e) ? prev : e));
     } catch {
       // Entitlements are advisory — never block UX on their refresh.
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
     }
   }, []);
 
@@ -213,10 +225,15 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       // token — once applySession(null) clears refs, signOutRemote would
       // 401 and unregister would lose the bearer.
       const refreshToken = refreshTokenRef.current;
-      const hadToken = tokenRef.current !== null;
+      const hadAccessToken = tokenRef.current !== null;
+      // Only call signOutRemote when we actually have a refresh token to
+      // revoke — without it the backend rejects the request (and there's
+      // nothing useful to do server-side anyway).
       await Promise.all([
         unregisterPushForSession(),
-        hadToken ? authApi.signOutRemote(refreshToken).catch(() => {}) : Promise.resolve(),
+        hadAccessToken && refreshToken
+          ? authApi.signOutRemote(refreshToken).catch(() => {})
+          : Promise.resolve(),
       ]);
       await authStorage.clearSession();
       applySession(null);
@@ -254,6 +271,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let cancelled = false;
+    // Safety timeout: if the storage read or initial /me round-trip hangs
+    // (slow disk, OS pause, network stall), don't leave the user stuck on
+    // the splash screen indefinitely. Drop authLoading after 10s so they
+    // land on sign-in and can recover. The validation request continues in
+    // the background and will sign them in if it eventually succeeds.
+    const splashTimeout = setTimeout(() => {
+      if (!cancelled) setAuthLoading(false);
+    }, 10_000);
     (async () => {
       try {
         const [persisted, prefs] = await Promise.all([
@@ -291,11 +316,13 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           );
         }
       } finally {
+        clearTimeout(splashTimeout);
         if (!cancelled) setAuthLoading(false);
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(splashTimeout);
     };
   }, [applySession]);
 

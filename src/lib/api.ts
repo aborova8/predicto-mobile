@@ -53,6 +53,12 @@ export class ApiError extends Error {
   }
 }
 
+// Surfaced when a FormData request 401s and the access token has just been
+// refreshed — callers should rebuild and re-send the request to pick up the
+// fresh bearer. FormData can't be transparently retried because RN's fetch
+// may consume the underlying stream on first send.
+export const API_RETRY_AFTER_REFRESH = 'RETRY_AFTER_REFRESH';
+
 interface ApiConfig {
   getToken: () => string | null;
   // Returns a fresh access token. Throws if refresh is impossible (no
@@ -162,6 +168,23 @@ export async function request<T>(path: string, opts: RequestOpts = {}): Promise<
       );
     } catch {
       // Refresh impossible — fall through to the standard 401 handling below.
+    }
+  } else if (res.status === 401 && !opts.noAuth && opts.formData) {
+    // FormData bodies can't be transparently retried (see above), but we can
+    // still refresh the token so the *next* attempt succeeds. Signal to the
+    // caller with a distinct error code that the upload should be re-issued
+    // with a fresh access token. If the refresh itself fails, fall through to
+    // the standard 401 path (sign-out via onUnauthorized).
+    try {
+      await attemptRefresh();
+      throw new ApiError(
+        401,
+        'Token refreshed — please retry the upload.',
+        API_RETRY_AFTER_REFRESH,
+      );
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      // Refresh impossible — fall through to standard 401 handling below.
     }
   }
 

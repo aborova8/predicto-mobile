@@ -95,14 +95,12 @@ export async function getMe(): Promise<AuthUser> {
   return user;
 }
 
-export function signOutRemote(refreshToken?: string | null) {
-  // Body is optional — the backend revokes the supplied refresh token (so a
-  // logout from one device kills the refresh-token session) but still returns
-  // ok: true if it's missing.
-  return api.post<{ ok: true }>(
-    '/api/auth/logout',
-    refreshToken ? { refreshToken } : {},
-  );
+export function signOutRemote(refreshToken: string) {
+  // refreshToken is REQUIRED by the backend — without it the server-side
+  // session can't be revoked and a stolen token would survive a "logout".
+  // The caller is responsible for handling the missing-token case (e.g.
+  // skip the call entirely and proceed with local sign-out).
+  return api.post<{ ok: true }>('/api/auth/logout', { refreshToken });
 }
 
 // Exchange a refresh token for a fresh access + refresh pair. Single-use:

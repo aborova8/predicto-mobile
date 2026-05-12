@@ -12,6 +12,7 @@
       "bundleIdentifier": "app.predicto.mobile",
       "buildNumber": "1",
       "usesAppleSignIn": true,
+      "associatedDomains": ["applinks:api.predicto.app"],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
@@ -115,7 +116,21 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "api.predicto.app",
+              "pathPrefix": "/verify-email"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "output": "static",

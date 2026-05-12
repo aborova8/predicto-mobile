@@ -29,6 +29,11 @@ Notifications.setNotificationHandler({
 
 let lastRegisteredToken: string | null = null;
 let lastRegisterAt = 0;
+// Single-flight register so a sign-in → quick-sign-out can't race a still
+// in-flight registration. `unregisterPushForSession()` awaits this before
+// clearing state, guaranteeing we don't leave a token registered under the
+// prior user after sign-out completes.
+let inFlightRegister: Promise<string | null> | null = null;
 // Foreground events fire on every app/safari/notification-center toggle.
 // One re-register per 30 minutes is enough to refresh lastSeenAt without
 // hammering the backend when a user is task-switching frequently.
@@ -82,51 +87,59 @@ function readProjectId(): string | undefined {
  * Pass `force: true` to bypass the foreground debounce (sign-in flow).
  */
 export async function registerPushForSession(opts: { force?: boolean } = {}): Promise<string | null> {
-  try {
-    if (!Device.isDevice) return null; // simulators have no real push token
+  if (inFlightRegister) return inFlightRegister;
+  inFlightRegister = (async () => {
+    try {
+      if (!Device.isDevice) return null; // simulators have no real push token
 
-    if (
-      !opts.force &&
-      lastRegisteredToken &&
-      Date.now() - lastRegisterAt < REREGISTER_INTERVAL_MS
-    ) {
-      return lastRegisteredToken;
-    }
-
-    const projectId = readProjectId();
-    if (!projectId) {
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.warn('[push] EXPO_PUBLIC_PUSH_PROJECT_ID not set; skipping registration');
+      if (
+        !opts.force &&
+        lastRegisteredToken &&
+        Date.now() - lastRegisterAt < REREGISTER_INTERVAL_MS
+      ) {
+        return lastRegisteredToken;
       }
+
+      const projectId = readProjectId();
+      if (!projectId) {
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.warn('[push] EXPO_PUBLIC_PUSH_PROJECT_ID not set; skipping registration');
+        }
+        return null;
+      }
+
+      const granted = await requestPermission();
+      if (!granted) return null;
+
+      await ensureAndroidChannel();
+
+      const tokenResp = await Notifications.getExpoPushTokenAsync({ projectId });
+      const token = tokenResp.data;
+      if (!token) return null;
+
+      await registerDevice({
+        platform: platformForBackend(),
+        expoPushToken: token,
+        appVersion: Constants.expoConfig?.version ?? undefined,
+        nativeAppBuild:
+          Platform.OS === 'ios'
+            ? Constants.expoConfig?.ios?.buildNumber
+            : Constants.expoConfig?.android?.versionCode != null
+              ? String(Constants.expoConfig.android.versionCode)
+              : undefined,
+      });
+      lastRegisteredToken = token;
+      lastRegisterAt = Date.now();
+      return token;
+    } catch {
       return null;
     }
-
-    const granted = await requestPermission();
-    if (!granted) return null;
-
-    await ensureAndroidChannel();
-
-    const tokenResp = await Notifications.getExpoPushTokenAsync({ projectId });
-    const token = tokenResp.data;
-    if (!token) return null;
-
-    await registerDevice({
-      platform: platformForBackend(),
-      expoPushToken: token,
-      appVersion: Constants.expoConfig?.version ?? undefined,
-      nativeAppBuild:
-        Platform.OS === 'ios'
-          ? Constants.expoConfig?.ios?.buildNumber
-          : Constants.expoConfig?.android?.versionCode != null
-            ? String(Constants.expoConfig.android.versionCode)
-            : undefined,
-    });
-    lastRegisteredToken = token;
-    lastRegisterAt = Date.now();
-    return token;
-  } catch {
-    return null;
+  })();
+  try {
+    return await inFlightRegister;
+  } finally {
+    inFlightRegister = null;
   }
 }
 
@@ -139,6 +152,12 @@ export async function registerPushForSession(opts: { force?: boolean } = {}): Pr
  * keep arriving on this device.
  */
 export async function unregisterPushForSession(): Promise<void> {
+  // If a register is still in flight, wait for it to settle so we don't drop
+  // the token reference before the device row exists server-side. Otherwise
+  // unregister would no-op and the token would survive the sign-out.
+  if (inFlightRegister) {
+    await inFlightRegister.catch(() => {});
+  }
   const token = lastRegisteredToken;
   lastRegisteredToken = null;
   lastRegisterAt = 0;

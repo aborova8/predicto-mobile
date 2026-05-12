@@ -22,8 +22,12 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[ErrorBoundary]', error, info.componentStack);
-    // TODO: forward to Sentry / crash reporting once telemetry is wired.
+    // Dev only — leaving console.error in production ships error details
+    // into device logs (visible via Xcode/adb logcat) which can include
+    // user content. Crash reporting (Sentry et al.) is wired post-launch.
+    if (__DEV__) {
+      console.error('[ErrorBoundary]', error, info.componentStack);
+    }
   }
 
   reset = () => {

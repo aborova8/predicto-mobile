@@ -1,4 +1,4 @@
-import { api, buildQuery } from '@/lib/api';
+import { api, ApiError, API_RETRY_AFTER_REFRESH, buildQuery } from '@/lib/api';
 import type {
   BackendFriendUser,
   BackendTicket,
@@ -35,21 +35,44 @@ export function updateMyProfile(
 
 // Multipart variant — used when the user picks a new avatar via expo-image-picker.
 // Pass the picker asset { uri, mimeType?, fileName? } directly.
-export function updateMyProfileMultipart(input: {
+export async function updateMyProfileMultipart(input: {
   username?: string;
   bio?: string | null;
   avatar: { uri: string; mimeType?: string; fileName?: string | null };
 }): Promise<{ user: UpdatedProfileSummary }> {
-  const form = new FormData();
-  if (input.username !== undefined) form.append('username', input.username);
-  if (input.bio !== undefined) form.append('bio', input.bio ?? '');
-  // React Native's FormData accepts the {uri, type, name} blob descriptor.
-  form.append('avatar', {
-    uri: input.avatar.uri,
-    type: input.avatar.mimeType ?? 'image/jpeg',
-    name: input.avatar.fileName ?? `avatar-${Date.now()}.jpg`,
-  } as unknown as Blob);
-  return api.postForm<{ user: UpdatedProfileSummary }>('/api/users/me', form, { method: 'PATCH' });
+  // Rebuild the FormData on every attempt — RN's fetch may consume the
+  // underlying stream on first send, so the second attempt needs a fresh
+  // body. Wrapping in a builder keeps the retry on RETRY_AFTER_REFRESH
+  // (issued by api.ts when an expired access token was just refreshed)
+  // transparent to callers.
+  const buildForm = () => {
+    const form = new FormData();
+    if (input.username !== undefined) form.append('username', input.username);
+    if (input.bio !== undefined) form.append('bio', input.bio ?? '');
+    form.append('avatar', {
+      uri: input.avatar.uri,
+      type: input.avatar.mimeType ?? 'image/jpeg',
+      name: input.avatar.fileName ?? `avatar-${Date.now()}.jpg`,
+    } as unknown as Blob);
+    return form;
+  };
+
+  try {
+    return await api.postForm<{ user: UpdatedProfileSummary }>(
+      '/api/users/me',
+      buildForm(),
+      { method: 'PATCH' },
+    );
+  } catch (err) {
+    if (err instanceof ApiError && err.code === API_RETRY_AFTER_REFRESH) {
+      return await api.postForm<{ user: UpdatedProfileSummary }>(
+        '/api/users/me',
+        buildForm(),
+        { method: 'PATCH' },
+      );
+    }
+    throw err;
+  }
 }
 
 export interface MyTicketsPage {

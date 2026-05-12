@@ -52,7 +52,11 @@ function AuthGate() {
         // to dismiss, so it's safe to call unconditionally.
         try {
           router.dismissAll();
-        } catch {}
+        } catch (e) {
+          if (__DEV__) {
+            console.warn('[AuthGate] dismissAll failed', e);
+          }
+        }
         router.replace('/(auth)/sign-in');
       }
       return;
