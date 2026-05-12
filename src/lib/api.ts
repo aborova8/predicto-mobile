@@ -10,6 +10,20 @@ if (!RAW_BASE) {
   console.warn('[api] EXPO_PUBLIC_API_URL is not set. Network calls will fail.');
 }
 
+// Refuse to ship insecure HTTP in staging/production builds — bearer tokens
+// over plain HTTP can be intercepted on hostile networks. Dev builds keep
+// http://localhost working so the simulator can hit a local backend.
+const APP_ENV = process.env.EXPO_PUBLIC_APP_ENV;
+if (
+  RAW_BASE &&
+  RAW_BASE.startsWith('http://') &&
+  (APP_ENV === 'production' || APP_ENV === 'staging')
+) {
+  throw new Error(
+    `[api] Refusing to use insecure HTTP base URL "${RAW_BASE}" in ${APP_ENV} build. Use https://`,
+  );
+}
+
 // On Android emulators, host-machine localhost is reachable as 10.0.2.2.
 // We auto-rewrite localhost-pointing URLs so devs don't have to remember.
 function resolveBase(raw: string | undefined): string {
@@ -22,6 +36,10 @@ function resolveBase(raw: string | undefined): string {
 }
 
 const BASE = resolveBase(RAW_BASE);
+
+// 30s should comfortably cover the slowest legitimate request (avatar upload
+// over a 3G link); anything past this is more likely a hung connection.
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 export class ApiError extends Error {
   status: number;
@@ -37,11 +55,15 @@ export class ApiError extends Error {
 
 interface ApiConfig {
   getToken: () => string | null;
+  // Returns a fresh access token. Throws if refresh is impossible (no
+  // refresh token, or the refresh-token endpoint itself returns 401).
+  refreshAccessToken: () => Promise<string>;
   onUnauthorized: () => void;
 }
 
 let config: ApiConfig = {
   getToken: () => null,
+  refreshAccessToken: () => Promise.reject(new Error('refreshAccessToken not configured')),
   onUnauthorized: () => {},
 };
 
@@ -49,11 +71,38 @@ export function configureApi(next: ApiConfig) {
   config = next;
 }
 
+// Single-flight refresh: concurrent 401s share one in-flight refresh promise
+// instead of stampeding /auth/refresh and racing each other's rotations
+// (which would invalidate one another).
+let inflightRefresh: Promise<string> | null = null;
+
+function attemptRefresh(): Promise<string> {
+  if (inflightRefresh) return inflightRefresh;
+  inflightRefresh = config
+    .refreshAccessToken()
+    .finally(() => {
+      inflightRefresh = null;
+    });
+  return inflightRefresh;
+}
+
 interface RequestOpts {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   formData?: FormData;
   noAuth?: boolean;
+  // Per-request override for the default fetch timeout.
+  timeoutMs?: number;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
@@ -75,16 +124,46 @@ export async function request<T>(path: string, opts: RequestOpts = {}): Promise<
 
   let res: Response;
   try {
-    res = await fetch(url, {
-      method: opts.method ?? (body ? 'POST' : 'GET'),
-      headers,
-      body,
-    });
+    res = await fetchWithTimeout(
+      url,
+      { method: opts.method ?? (body ? 'POST' : 'GET'), headers, body },
+      opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    );
   } catch (err) {
+    if ((err as { name?: string })?.name === 'AbortError') {
+      throw new ApiError(
+        0,
+        'Request timed out. Check your connection and try again.',
+        'TIMEOUT',
+        err,
+      );
+    }
     throw new ApiError(0, 'Network request failed. Check your connection and try again.', 'NETWORK_ERROR', err);
   }
 
   if (res.status === 204) return undefined as T;
+
+  // 401 handling: attempt a single, shared refresh, then retry the original
+  // request once with the new access token. If refresh fails (no refresh
+  // token, expired refresh token, or refresh endpoint returns 401) we fall
+  // through to onUnauthorized() which the auth context turns into a sign-out.
+  // We skip the retry for explicitly-noAuth calls (no token to refresh, and
+  // the refresh endpoint itself is noAuth so this also breaks the loop) and
+  // for FormData bodies — React Native's fetch may consume the FormData on
+  // the first send, so replaying could upload empty payloads.
+  if (res.status === 401 && !opts.noAuth && !opts.formData) {
+    try {
+      const fresh = await attemptRefresh();
+      const retryHeaders = { ...headers, Authorization: `Bearer ${fresh}` };
+      res = await fetchWithTimeout(
+        url,
+        { method: opts.method ?? (body ? 'POST' : 'GET'), headers: retryHeaders, body },
+        opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      );
+    } catch {
+      // Refresh impossible — fall through to the standard 401 handling below.
+    }
+  }
 
   const text = await res.text();
   let json: unknown = undefined;
@@ -120,7 +199,7 @@ export const api = {
   postForm: <T>(
     path: string,
     formData: FormData,
-    opts?: Omit<RequestOpts, 'body' | 'formData'> & { method?: 'POST' | 'PUT' | 'PATCH' },
+    opts?: Omit<RequestOpts, 'body' | 'formData' | '_isRetry'> & { method?: 'POST' | 'PUT' | 'PATCH' },
   ) => request<T>(path, { ...opts, method: opts?.method ?? 'POST', formData }),
   put: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body' | 'formData'>) =>
     request<T>(path, { ...opts, method: 'PUT', body }),

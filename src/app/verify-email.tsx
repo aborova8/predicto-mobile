@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -28,8 +28,19 @@ export default function VerifyEmailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, refreshUser, signOut } = useAppState();
+  // If the user opened this screen via a deep link
+  // (predictomobile://verify-email?code=NNNNNN), pre-fill the input so they
+  // don't have to retype. Only accepts a strict 6-digit numeric code; any
+  // other value is ignored.
+  const params = useLocalSearchParams<{ code?: string | string[] }>();
   const [step, setStep] = useState<Step>('sending');
-  const [code, setCode] = useState<string[]>(['', '', '', '', '', '']);
+  const [code, setCode] = useState<string[]>(() => {
+    const raw = Array.isArray(params.code) ? params.code[0] : params.code;
+    if (typeof raw !== 'string' || !/^\d{6}$/.test(raw)) {
+      return ['', '', '', '', '', ''];
+    }
+    return raw.split('');
+  });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const otpRef = useRef<OtpInputHandle>(null);
@@ -60,7 +71,7 @@ export default function VerifyEmailScreen() {
     setBusy(true);
     try {
       await confirmEmailVerification(codeStr);
-      void refreshUser();
+      refreshUser().catch(() => {});
       setStep('done');
     } catch (e) {
       setErr(errorMessage(e, 'Invalid or expired code.'));
@@ -159,7 +170,9 @@ export default function VerifyEmailScreen() {
                 </Text>
               </Text>
               <Text
-                onPress={() => void signOut()}
+                onPress={() => {
+                  signOut().catch(() => {});
+                }}
                 style={{
                   marginTop: 12,
                   color: theme.text3,

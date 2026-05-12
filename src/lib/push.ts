@@ -133,15 +133,27 @@ export async function registerPushForSession(opts: { force?: boolean } = {}): Pr
 /**
  * Best-effort unregister of the last-registered token. Called on sign-out so
  * the backend stops delivering pushes to this device under the prior user.
+ * Retries up to three times with exponential backoff (1s, 2s, 4s) so a
+ * transient network failure during the sign-out flow doesn't leave the token
+ * registered — that would cause notifications meant for the previous user to
+ * keep arriving on this device.
  */
 export async function unregisterPushForSession(): Promise<void> {
   const token = lastRegisteredToken;
   lastRegisteredToken = null;
   lastRegisterAt = 0;
   if (!token) return;
-  try {
-    await unregisterDevice(token);
-  } catch {
-    // swallow — server-side cleanup happens via DeviceNotRegistered on next send
+  const backoffsMs = [1000, 2000, 4000];
+  for (let attempt = 0; attempt < backoffsMs.length; attempt++) {
+    try {
+      await unregisterDevice(token);
+      return;
+    } catch {
+      if (attempt < backoffsMs.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, backoffsMs[attempt]));
+      }
+      // Final failure falls through — server-side cleanup happens via
+      // DeviceNotRegistered on the next push send. Don't block sign-out.
+    }
   }
 }

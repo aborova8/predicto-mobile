@@ -7,6 +7,7 @@ import type { AuthUser } from '@/types/domain';
 
 export interface AuthResponse {
   token: string;
+  refreshToken: string;
   user: AuthUser;
 }
 
@@ -94,8 +95,22 @@ export async function getMe(): Promise<AuthUser> {
   return user;
 }
 
-export function signOutRemote() {
-  return api.post<{ ok: true }>('/api/auth/logout');
+export function signOutRemote(refreshToken?: string | null) {
+  // Body is optional — the backend revokes the supplied refresh token (so a
+  // logout from one device kills the refresh-token session) but still returns
+  // ok: true if it's missing.
+  return api.post<{ ok: true }>(
+    '/api/auth/logout',
+    refreshToken ? { refreshToken } : {},
+  );
+}
+
+// Exchange a refresh token for a fresh access + refresh pair. Single-use:
+// the backend revokes the supplied refresh token in the same transaction
+// that issues the new one, so a replayed/stolen token is dead. `noAuth`
+// because the access token is expired by the time this is called.
+export function refreshAccessToken(refreshToken: string) {
+  return api.post<AuthResponse>('/api/auth/refresh', { refreshToken }, { noAuth: true });
 }
 
 // Revokes every JWT minted before now for this user, then returns a freshly

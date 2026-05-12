@@ -25,6 +25,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppStateProvider, useAppState } from '@/state/AppStateContext';
 import { DataEpochProvider } from '@/state/DataEpochContext';
 import { ThemeProvider, useTheme, useThemeCtx } from '@/theme/ThemeContext';
@@ -44,7 +45,16 @@ function AuthGate() {
   useEffect(() => {
     if (authLoading) return;
     if (!authed) {
-      if (!inAuthGroup) router.replace('/(auth)/sign-in');
+      if (!inAuthGroup) {
+        // Pop every detail/modal screen on top of the stack before redirecting
+        // so the user can't hit back from sign-in and land in a tab they no
+        // longer have access to. `dismissAll` is a no-op when there's nothing
+        // to dismiss, so it's safe to call unconditionally.
+        try {
+          router.dismissAll();
+        } catch {}
+        router.replace('/(auth)/sign-in');
+      }
       return;
     }
     if (needsEmailVerify) {
@@ -57,6 +67,19 @@ function AuthGate() {
   }, [authed, authLoading, inAuthGroup, onVerifyScreen, needsEmailVerify, router]);
 
   return null;
+}
+
+function InnerErrorBoundary({ children }: { children: React.ReactNode }) {
+  const { signOut } = useAppState();
+  return (
+    <ErrorBoundary
+      onSignOut={() => {
+        signOut().catch(() => {});
+      }}
+    >
+      {children}
+    </ErrorBoundary>
+  );
 }
 
 function RootStack() {
@@ -133,16 +156,20 @@ export default function RootLayout() {
   if (!loaded) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <ThemeProvider>
-          <DataEpochProvider>
-            <AppStateProvider>
-              <ThemedShell />
-            </AppStateProvider>
-          </DataEpochProvider>
-        </ThemeProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <ThemeProvider>
+            <DataEpochProvider>
+              <AppStateProvider>
+                <InnerErrorBoundary>
+                  <ThemedShell />
+                </InnerErrorBoundary>
+              </AppStateProvider>
+            </DataEpochProvider>
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }

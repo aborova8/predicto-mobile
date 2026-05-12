@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { AppState } from 'react-native';
 
-import { configureApi } from '@/lib/api';
+import { ApiError, configureApi } from '@/lib/api';
 import { getEntitlements, type BackendEntitlements } from '@/lib/api/iap';
 import { getUnreadNotifications } from '@/lib/api/notifications';
 import { createTicket } from '@/lib/api/tickets';
@@ -20,7 +20,7 @@ import * as authStorage from '@/lib/auth/storage';
 import { predictionFromPick } from '@/lib/mappers';
 import { partitionPicksByKickoff } from '@/lib/picks';
 import { registerPushForSession, unregisterPushForSession } from '@/lib/push';
-import { useDataEpoch } from '@/state/DataEpochContext';
+import { useBumpDataEpoch, useDataEpoch } from '@/state/DataEpochContext';
 import type { AuthUser, FeedLayout, FeedScope, Pick, TicketVariant } from '@/types/domain';
 
 type Picks = Record<string, Pick | null>;
@@ -120,6 +120,13 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   // Mirror token in a ref so the api `getToken` callback always sees the
   // latest value without re-running configureApi on every change.
   const tokenRef = useRef<string | null>(null);
+  // Mirror the refresh token in a ref too — it changes on every /auth/refresh
+  // rotation, and the api `refreshAccessToken` callback needs the latest.
+  const refreshTokenRef = useRef<string | null>(null);
+  // Guards against concurrent signOut() calls — a burst of 401s would
+  // otherwise schedule N parallel logouts that race for SecureStore and
+  // push-token cleanup. The first one wins; the rest are no-ops.
+  const signOutInFlightRef = useRef(false);
 
   // ── Picks / UI prefs ──────────────────────────────────────────────────────
   const [picks, setPicks] = useState<Picks>({});
@@ -130,6 +137,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const unreadReqRef = useRef(0);
   const dataEpoch = useDataEpoch();
+  const bumpDataEpoch = useBumpDataEpoch();
 
   const refreshEntitlements = useCallback(async () => {
     if (!tokenRef.current) {
@@ -170,44 +178,75 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   }, []);
 
   const applySession = useCallback(
-    (next: { token: string; user: AuthUser } | null) => {
+    (next: { token: string; refreshToken?: string; user: AuthUser } | null) => {
       if (next) {
         tokenRef.current = next.token;
+        refreshTokenRef.current = next.refreshToken ?? null;
         setToken(next.token);
         setUser(next.user);
-        void refreshEntitlements();
+        refreshEntitlements().catch(() => {});
         // Register for push notifications. registerPushForSession swallows
         // its own errors — never block sign-in on permission prompts.
-        void registerPushForSession({ force: true });
+        registerPushForSession({ force: true }).catch(() => {});
       } else {
         tokenRef.current = null;
+        refreshTokenRef.current = null;
         setToken(null);
         setUser(null);
         setEntitlements(null);
+        // Bump dataEpoch so every hook that opts in (matches, feed, friends,
+        // groups, notifications, tickets, leaderboard) re-runs from scratch
+        // and any stale data from the prior user disappears.
+        bumpDataEpoch();
       }
     },
-    [refreshEntitlements],
+    [refreshEntitlements, bumpDataEpoch],
   );
 
   const signOut = useCallback(async () => {
-    // Best-effort remote unregister BEFORE we drop the token — once
-    // applySession(null) runs, the api `getToken` returns null and the
-    // DELETE would 401.
-    await unregisterPushForSession();
+    if (signOutInFlightRef.current) return;
+    signOutInFlightRef.current = true;
     try {
-      if (tokenRef.current) await authApi.signOutRemote();
-    } catch {}
-    await authStorage.clearSession();
-    applySession(null);
+      // Push unregister and remote logout are independent best-effort calls;
+      // run them in parallel so push retries (up to 7s of backoff) don't
+      // gate the logout request. Both must complete before we drop the
+      // token — once applySession(null) clears refs, signOutRemote would
+      // 401 and unregister would lose the bearer.
+      const refreshToken = refreshTokenRef.current;
+      const hadToken = tokenRef.current !== null;
+      await Promise.all([
+        unregisterPushForSession(),
+        hadToken ? authApi.signOutRemote(refreshToken).catch(() => {}) : Promise.resolve(),
+      ]);
+      await authStorage.clearSession();
+      applySession(null);
+    } finally {
+      signOutInFlightRef.current = false;
+    }
   }, [applySession]);
 
   useEffect(() => {
     configureApi({
       getToken: () => tokenRef.current,
+      refreshAccessToken: async () => {
+        const stored = refreshTokenRef.current;
+        if (!stored) throw new Error('No refresh token');
+        const res = await authApi.refreshAccessToken(stored);
+        // Update only the refs and persisted storage — skip setToken/setUser
+        // so a silent refresh every 15 minutes doesn't re-render every
+        // context consumer. `authed` is derived from token !== null and
+        // doesn't flip during a refresh.
+        tokenRef.current = res.token;
+        refreshTokenRef.current = res.refreshToken;
+        await authStorage.setSession(res);
+        return res.token;
+      },
       onUnauthorized: () => {
         // Defer a tick so the in-flight request can throw before we clear.
+        // signOutInFlightRef makes the call idempotent against the burst of
+        // 401s a stale token tends to produce.
         setTimeout(() => {
-          void signOut();
+          signOut().catch(() => {});
         }, 0);
       },
     });
@@ -229,14 +268,26 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         if (fl === 'card' || fl === 'compact') setFeedLayoutState(fl);
         if (persisted) {
           applySession(persisted);
-          void authApi.getMe().then(
+          // Validate the persisted session against the server. A 401 here
+          // (token expired, user deleted, sessions revoked) used to be
+          // silently swallowed — the user appeared signed in but every
+          // subsequent request 401'd. Now we attempt one refresh via the
+          // standard interceptor; if that also fails the api layer calls
+          // onUnauthorized → signOut, which is what we want.
+          authApi.getMe().then(
             (fresh) => {
               if (cancelled) return;
               if (sameAuthUser(persisted.user, fresh)) return;
               setUser(fresh);
-              void authStorage.updateCachedUser(fresh);
+              authStorage.updateCachedUser(fresh).catch(() => {});
             },
-            () => {},
+            (err) => {
+              if (cancelled) return;
+              // 401 already triggered onUnauthorized → signOut via the api
+              // layer; no extra cleanup needed here. Other errors (network,
+              // server 5xx) are transient — keep the persisted session.
+              if (!(err instanceof ApiError) || err.status !== 401) return;
+            },
           );
         }
       } finally {
@@ -256,8 +307,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
-      void refreshEntitlements();
-      if (tokenRef.current) void registerPushForSession();
+      refreshEntitlements().catch(() => {});
+      if (tokenRef.current) registerPushForSession().catch(() => {});
     });
     return () => sub.remove();
   }, [refreshEntitlements]);
@@ -271,8 +322,10 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       setUnreadNotifications(0);
       return;
     }
-    void refreshUnreadNotifications();
-    const interval = setInterval(() => void refreshUnreadNotifications(), 60_000);
+    refreshUnreadNotifications().catch(() => {});
+    const interval = setInterval(() => {
+      refreshUnreadNotifications().catch(() => {});
+    }, 60_000);
     return () => clearInterval(interval);
   }, [authedForUnread, refreshUnreadNotifications]);
 
@@ -283,7 +336,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     if (prevEpochRef.current === dataEpoch) return;
     prevEpochRef.current = dataEpoch;
     if (!authedForUnread) return;
-    void refreshUnreadNotifications();
+    refreshUnreadNotifications().catch(() => {});
   }, [dataEpoch, authedForUnread, refreshUnreadNotifications]);
 
   const setTicketVariant = useCallback((v: TicketVariant) => {
@@ -415,8 +468,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       };
       const { ticket } = await createTicket(payload);
       setPicks({});
-      void refreshUser().catch(() => {});
-      void refreshEntitlements().catch(() => {});
+      refreshUser().catch(() => {});
+      refreshEntitlements().catch(() => {});
       return { ticketId: ticket.id };
     },
     [picks, refreshUser, refreshEntitlements],
