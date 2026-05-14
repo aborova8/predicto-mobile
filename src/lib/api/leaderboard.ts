@@ -6,6 +6,7 @@ export type ListLeaderboardQuery = {
   board?: LeaderboardBoard;
   page?: number;
   pageSize?: number;
+  q?: string;
 };
 
 export function getLeaderboard(q: ListLeaderboardQuery = {}): Promise<LeaderboardResponse> {

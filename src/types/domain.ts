@@ -220,7 +220,9 @@ export type LeaderboardScope = 'global' | 'friends';
 export type LeaderboardBoard = 'points' | 'streak' | 'bigOdds';
 
 export interface LeaderboardEntry {
-  rank: number;
+  // Null when the entry came from a username search — the filtered subset
+  // isn't a meaningful ranked list; UI renders '—' in that case.
+  rank: number | null;
   user: PostAuthor;
   points: number;
   streak: number;

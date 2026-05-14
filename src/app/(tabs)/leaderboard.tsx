@@ -9,11 +9,13 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/atoms/Avatar';
+import { Icon } from '@/components/atoms/Icon';
 import { GroupPickerSheet } from '@/components/leaderboard/GroupPickerSheet';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
 import { withAlpha } from '@/lib/colors';
@@ -57,17 +59,20 @@ export default function LeaderboardScreen() {
   const [scope, setScope] = useState<LeaderboardScope>('global');
   const [board, setBoard] = useState<LeaderboardBoard>('points');
   const [showGroupPicker, setShowGroupPicker] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const isSearching = query.trim().length > 0;
 
   const { items, viewer, loading, loadingMore, hasMore, error, refetch, fetchMore } =
-    useLeaderboard(scope, board);
+    useLeaderboard(scope, board, query);
   const cfg = VALUES[board];
 
   const viewerInList = viewer ? items.some((i) => i.user.id === viewer.user.id) : false;
-  const showStickyViewer = !!viewer && !viewerInList;
-  // Podium covers ranks 1-3 (top of page 1). Everything else flows into the
-  // FlatList. On page 2+, all rows have rank > 3 anyway so this filter is a
-  // no-op for appended pages.
-  const listRows = items.filter((i) => i.rank > 3);
+  const showStickyViewer = !isSearching && !!viewer && !viewerInList;
+  // Below 3 entries the podium hides AND ListEmptyComponent skips
+  // (items.length > 0); fall back to plain rows so early users don't vanish.
+  const showPodium = !isSearching && items.length >= 3;
+  const listRows = showPodium ? items.filter((i) => (i.rank ?? 0) > 3) : items;
 
   const renderRow = useCallback<ListRenderItem<LeaderboardEntry>>(
     ({ item }) => (
@@ -129,9 +134,39 @@ export default function LeaderboardScreen() {
             );
           })}
         </View>
+
+        <View
+          style={[
+            styles.searchBar,
+            { backgroundColor: theme.surface, borderColor: theme.line },
+          ]}
+        >
+          <Icon name="search" size={16} color={theme.text3} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search by username…"
+            placeholderTextColor={theme.text3}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            style={{
+              flex: 1,
+              fontFamily: Fonts.uiRegular,
+              fontSize: 13,
+              color: theme.text,
+              paddingVertical: 0,
+            }}
+          />
+          {query ? (
+            <Pressable onPress={() => setQuery('')} hitSlop={8}>
+              <Icon name="x" size={14} color={theme.text3} />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
-      {items.length >= 3 ? (
+      {showPodium ? (
         <Podium
           rows={items}
           cfg={cfg}
@@ -191,7 +226,9 @@ export default function LeaderboardScreen() {
             </View>
           ) : items.length === 0 ? (
             <View style={styles.center}>
-              <Text style={[styles.emptyText, { color: theme.text2 }]}>No standings yet.</Text>
+              <Text style={[styles.emptyText, { color: theme.text2 }]}>
+                {isSearching ? 'No players found.' : 'No standings yet.'}
+              </Text>
             </View>
           ) : null
         }
@@ -231,7 +268,7 @@ function Row({ entry, cfg, isMe, onPress }: RowProps) {
         },
       ]}
     >
-      <Text style={[styles.rank, { color: theme.text2 }]}>{entry.rank}</Text>
+      <Text style={[styles.rank, { color: theme.text2 }]}>{entry.rank ?? '—'}</Text>
       <Avatar author={entry.user} size={36} />
       <View style={{ flex: 1 }}>
         <Text style={[styles.rowName, { color: theme.text }]}>
@@ -347,6 +384,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 999,
     borderWidth: 1,
+  },
+  searchBar: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 38,
   },
   scopeTxt: {
     fontFamily: Fonts.monoBold,

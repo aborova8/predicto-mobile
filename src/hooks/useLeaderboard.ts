@@ -4,6 +4,7 @@ import { getLeaderboard } from '@/lib/api/leaderboard';
 import type { LeaderboardBoard, LeaderboardEntry, LeaderboardScope } from '@/types/domain';
 
 const PAGE_SIZE = 50;
+const SEARCH_DEBOUNCE_MS = 300;
 
 export interface UseLeaderboardResult {
   items: LeaderboardEntry[];
@@ -17,10 +18,12 @@ export interface UseLeaderboardResult {
 }
 
 // Page-based (not cursor) so ranks stay continuous across pages — backend
-// computes rank from skip = (page - 1) * pageSize.
+// computes rank from skip = (page - 1) * pageSize. When `q` is set, the
+// backend treats the response as a search subset (rank: null).
 export function useLeaderboard(
   scope: LeaderboardScope,
   board: LeaderboardBoard,
+  q?: string,
 ): UseLeaderboardResult {
   const [items, setItems] = useState<LeaderboardEntry[]>([]);
   const [viewer, setViewer] = useState<LeaderboardEntry | null>(null);
@@ -33,12 +36,27 @@ export function useLeaderboard(
   const refreshReqRef = useRef(0);
   const fetchMoreReqRef = useRef(0);
 
+  // Debounce the search input here so the screen can pass raw input straight
+  // through and not own a second piece of state.
+  const [trimmedQ, setTrimmedQ] = useState<string | undefined>(() => q?.trim() || undefined);
+  useEffect(() => {
+    const next = q?.trim() || undefined;
+    const handle = setTimeout(() => setTrimmedQ(next), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [q]);
+
   const refetch = useCallback(async () => {
     const reqId = ++refreshReqRef.current;
     setLoading(true);
     setError(null);
     try {
-      const res = await getLeaderboard({ scope, board, page: 1, pageSize: PAGE_SIZE });
+      const res = await getLeaderboard({
+        scope,
+        board,
+        page: 1,
+        pageSize: PAGE_SIZE,
+        q: trimmedQ,
+      });
       if (refreshReqRef.current !== reqId) return;
       setItems(res.items);
       setViewer(res.viewer);
@@ -50,7 +68,7 @@ export function useLeaderboard(
     } finally {
       if (refreshReqRef.current === reqId) setLoading(false);
     }
-  }, [scope, board]);
+  }, [scope, board, trimmedQ]);
 
   const fetchMore = useCallback(async () => {
     if (!hasMore || loadingMore || loading) return;
@@ -63,6 +81,7 @@ export function useLeaderboard(
         board,
         page: page + 1,
         pageSize: PAGE_SIZE,
+        q: trimmedQ,
       });
       // Bail if a refetch happened mid-flight or a newer fetchMore superseded us.
       if (
@@ -80,7 +99,7 @@ export function useLeaderboard(
     } finally {
       if (fetchMoreReqRef.current === reqId) setLoadingMore(false);
     }
-  }, [scope, board, page, hasMore, loadingMore, loading]);
+  }, [scope, board, page, hasMore, loadingMore, loading, trimmedQ]);
 
   useEffect(() => {
     void refetch();
