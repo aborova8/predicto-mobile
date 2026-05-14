@@ -4,6 +4,10 @@ import type { BackendPrediction, BackendTicket, Eligibility } from '@/types/doma
 export interface CreateTicketInput {
   picks: { matchId: string; prediction: BackendPrediction }[];
   caption?: string;
+  // When set, the ticket is scoped to this group: it stays out of the global
+  // feed/leaderboard and appears only in the group's feed/leaderboard. The
+  // backend rejects requests for groups the caller isn't a member of.
+  groupId?: string;
 }
 
 export function getEligibility(): Promise<Eligibility> {

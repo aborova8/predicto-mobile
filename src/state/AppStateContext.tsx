@@ -25,6 +25,13 @@ import type { AuthUser, FeedLayout, FeedScope, Pick, TicketVariant } from '@/typ
 
 type Picks = Record<string, Pick | null>;
 
+// Where the in-progress slip will be submitted to. `global` is the default
+// (top-of-feed, contributes to User.points); `group` scopes the ticket to
+// that group's feed/leaderboard only and stays out of the global feed.
+export type SlipContext =
+  | { kind: 'global' }
+  | { kind: 'group'; groupId: string; groupName: string };
+
 interface SubmitTicketOptions {
   caption?: string;
 }
@@ -51,6 +58,11 @@ interface AppStateCtx {
   setPick: (matchId: string, pick: Pick | null) => void;
   clearPicks: () => void;
   pickCount: number;
+  // Context the next submit will be tagged with. `setSlipContext` is the only
+  // supported way to flip the slip between global and a group; group screens
+  // call it before navigating into the predict flow.
+  slipContext: SlipContext;
+  setSlipContext: (ctx: SlipContext) => void;
   submitTicket: (opts?: SubmitTicketOptions) => Promise<{ ticketId: string }>;
 
   // ── UI prefs ────────────────────────────────────────────────────────────
@@ -130,6 +142,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
   // ── Picks / UI prefs ──────────────────────────────────────────────────────
   const [picks, setPicks] = useState<Picks>({});
+  const [slipContext, setSlipContextState] = useState<SlipContext>({ kind: 'global' });
   const [filter, setFilter] = useState<FeedScope>('global');
   const [ticketVariant, setTicketVariantState] = useState<TicketVariant>('slip');
   const [feedLayout, setFeedLayoutState] = useState<FeedLayout>('card');
@@ -459,7 +472,20 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     });
   }, []);
 
-  const clearPicks = useCallback(() => setPicks({}), []);
+  const clearPicks = useCallback(() => {
+    setPicks({});
+    setSlipContextState({ kind: 'global' });
+  }, []);
+
+  const setSlipContext = useCallback((ctx: SlipContext) => {
+    setSlipContextState((prev) => {
+      if (prev.kind === ctx.kind) {
+        if (ctx.kind === 'global') return prev;
+        if (prev.kind === 'group' && prev.groupId === ctx.groupId) return prev;
+      }
+      return ctx;
+    });
+  }, []);
 
   const submitTicket = useCallback(
     async (opts: SubmitTicketOptions = {}) => {
@@ -499,14 +525,19 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           prediction: predictionFromPick(pick),
         })),
         caption: opts.caption,
+        groupId: slipContext.kind === 'group' ? slipContext.groupId : undefined,
       };
       const { ticket } = await createTicket(payload);
       setPicks({});
+      // Reset slip context after every submit so the next slip starts fresh
+      // on Global; group screens that want a group-tagged slip set the
+      // context again before navigating into Predict.
+      setSlipContextState({ kind: 'global' });
       refreshUser().catch(() => {});
       refreshEntitlements().catch(() => {});
       return { ticketId: ticket.id };
     },
-    [picks, refreshUser, refreshEntitlements],
+    [picks, slipContext, refreshUser, refreshEntitlements],
   );
 
   const pickCount = useMemo(
@@ -533,7 +564,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       verifyPasswordResetCode,
       confirmPasswordReset,
 
-      picks, setPick, clearPicks, pickCount, submitTicket,
+      picks, setPick, clearPicks, pickCount,
+      slipContext, setSlipContext,
+      submitTicket,
       filter, setFilter,
       ticketVariant, setTicketVariant,
       feedLayout, setFeedLayout,
@@ -547,7 +580,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       authed, authLoading, user, token,
       signIn, signUp, signInWithGoogle, signInWithApple, signOut, revokeAllOtherSessions, refreshUser,
       requestPasswordReset, verifyPasswordResetCode, confirmPasswordReset,
-      picks, setPick, clearPicks, pickCount, submitTicket,
+      picks, setPick, clearPicks, pickCount,
+      slipContext, setSlipContext,
+      submitTicket,
       filter, ticketVariant, setTicketVariant,
       feedLayout, setFeedLayout,
       entitlements, refreshEntitlements,

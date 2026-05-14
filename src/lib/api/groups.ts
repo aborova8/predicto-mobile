@@ -49,19 +49,23 @@ export function deleteGroup(id: string): Promise<{ ok: true }> {
   return api.delete<{ ok: true }>(`/api/groups/${encodeURIComponent(id)}`);
 }
 
-// `joined` and `requestPending` and `alreadyMember` are mutually-exclusive
-// outcome flags — exactly one of them is set. Mirrors the backend service
-// return type in groups.service.ts → joinGroupByCode.
+// `joined` and `alreadyMember` are mutually-exclusive outcome flags — exactly
+// one of them is set. Mirrors the backend service return type in
+// groups.service.ts → joinGroupByCode.
 export interface JoinByCodeResult {
   group: BackendGroup;
   joined?: true;
   alreadyMember?: true;
-  requestPending?: true;
-  requestId?: string;
 }
 
 export function joinGroupByCode(inviteCode: string): Promise<JoinByCodeResult> {
   return api.post<JoinByCodeResult>('/api/groups/join', { inviteCode });
+}
+
+// Direct join of a public group. The backend rejects this with 403 if the
+// group is private — UI should not surface this button for private groups.
+export function joinPublicGroup(id: string): Promise<JoinByCodeResult> {
+  return api.post<JoinByCodeResult>(`/api/groups/${encodeURIComponent(id)}/join`);
 }
 
 export function leaveGroup(id: string): Promise<{ ok: true }> {

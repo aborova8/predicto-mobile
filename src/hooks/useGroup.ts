@@ -4,6 +4,7 @@ import { useAsyncResource } from '@/hooks/useAsyncResource';
 import {
   deleteGroup as deleteGroupApi,
   getGroup,
+  joinPublicGroup as joinPublicGroupApi,
   leaveGroup as leaveGroupApi,
   rotateInviteCode as rotateInviteCodeApi,
   transferOwnership as transferOwnershipApi,
@@ -20,6 +21,10 @@ export interface UseGroupResult {
   update: (patch: { name?: string; description?: string }) => Promise<void>;
   remove: () => Promise<void>;
   leave: () => Promise<void>;
+  // Direct join — only call for PUBLIC groups. Updates the cached group with
+  // viewerRole=MEMBER on success so the screen flips to the member view
+  // without waiting for a refetch round-trip.
+  join: () => Promise<void>;
   rotateCode: () => Promise<string>;
   // transfer flips roles on multiple GroupMember rows — caller must refetch
   // members alongside the group to keep the views consistent.
@@ -56,6 +61,15 @@ export function useGroup(id: string): UseGroupResult {
     setData((prev) => (prev ? { ...prev, viewerRole: null, inviteCode: undefined } : prev));
   }, [id, setData]);
 
+  const join = useCallback(async () => {
+    await joinPublicGroupApi(id);
+    setData((prev) =>
+      prev
+        ? { ...prev, viewerRole: 'MEMBER', memberCount: prev.memberCount + 1 }
+        : prev,
+    );
+  }, [id, setData]);
+
   const rotateCode = useCallback(async () => {
     const { inviteCode } = await rotateInviteCodeApi(id);
     setData((prev) => (prev ? { ...prev, inviteCode } : prev));
@@ -69,5 +83,5 @@ export function useGroup(id: string): UseGroupResult {
     [id],
   );
 
-  return { group: data, loading, error, refetch, update, remove, leave, rotateCode, transfer };
+  return { group: data, loading, error, refetch, update, remove, leave, join, rotateCode, transfer };
 }

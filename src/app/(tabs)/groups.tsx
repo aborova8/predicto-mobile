@@ -81,8 +81,6 @@ export default function GroupsScreen() {
       if (result.joined || result.alreadyMember) {
         await mineQ.refetch();
         router.push(`/group/${g.id}`);
-      } else if (result.requestPending) {
-        Alert.alert('Request sent', 'An admin will approve you shortly.');
       }
     } catch (err) {
       Alert.alert('Could not join', errorMessage(err, 'Try again.'));

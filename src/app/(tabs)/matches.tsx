@@ -27,7 +27,7 @@ export default function MatchesScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { picks, setPick, pickCount } = useAppState();
+  const { picks, setPick, pickCount, slipContext, setSlipContext } = useAppState();
   const { byDay, days, loading, error, refetch, lastFetchedAt } = useMatches();
   const {
     data: eligibility,
@@ -243,9 +243,20 @@ export default function MatchesScreen() {
               <Text style={[styles.bottomTitle, { color: theme.text }]}>
                 {pickCount} pick{pickCount > 1 ? 's' : ''} on your slip
               </Text>
-              <Text style={[styles.bottomSub, { color: theme.text2 }]}>
-                {canCreateTicket ? 'Ready when you are' : 'Out of tickets'}
-              </Text>
+              {slipContext.kind === 'group' ? (
+                <Pressable
+                  onPress={() => setSlipContext({ kind: 'global' })}
+                  hitSlop={6}
+                >
+                  <Text style={[styles.bottomSub, { color: theme.neon }]} numberOfLines={1}>
+                    FOR {slipContext.groupName.toUpperCase()} · TAP TO CLEAR
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={[styles.bottomSub, { color: theme.text2 }]}>
+                  {canCreateTicket ? 'Ready when you are' : 'Out of tickets'}
+                </Text>
+              )}
             </View>
             <Pressable
               onPress={() => router.push(canCreateTicket ? '/review' : '/paywall')}

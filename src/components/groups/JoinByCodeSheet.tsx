@@ -20,13 +20,11 @@ export function JoinByCodeSheet({ open, onClose, onResult, joinByCode }: JoinByC
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setCode('');
       setError(null);
-      setPendingMessage(null);
       setSubmitting(false);
     }
   }, [open]);
@@ -38,16 +36,10 @@ export function JoinByCodeSheet({ open, onClose, onResult, joinByCode }: JoinByC
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
-    setPendingMessage(null);
     try {
       const result = await joinByCode(trimmed);
-      if (result.requestPending) {
-        setPendingMessage('Request sent. An admin will approve you shortly.');
-        // Don't auto-close — let the user read the banner.
-      } else {
-        onResult(result);
-        onClose();
-      }
+      onResult(result);
+      onClose();
     } catch (err) {
       setError(errorMessage(err, 'Could not join group. Check the code and try again.'));
     } finally {
@@ -60,7 +52,7 @@ export function JoinByCodeSheet({ open, onClose, onResult, joinByCode }: JoinByC
       <BottomSheet title="Join a group" onClose={onClose}>
         <View style={styles.body}>
           <Text style={[styles.hint, { color: theme.text2 }]}>
-            Paste an invite code to join. Public groups join instantly. Private groups send a request to the admins.
+            Paste an invite code to join the group instantly.
           </Text>
           <TextInput
             value={code}
@@ -77,16 +69,6 @@ export function JoinByCodeSheet({ open, onClose, onResult, joinByCode }: JoinByC
             onSubmitEditing={submit}
           />
           {error ? <Text style={[styles.errorText, { color: theme.loss }]}>{error}</Text> : null}
-          {pendingMessage ? (
-            <View
-              style={[
-                styles.banner,
-                { backgroundColor: theme.neonDim, borderColor: theme.neon },
-              ]}
-            >
-              <Text style={[styles.bannerText, { color: theme.neon }]}>{pendingMessage}</Text>
-            </View>
-          ) : null}
           <View style={styles.actions}>
             <Pressable
               onPress={onClose}
@@ -130,17 +112,6 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: Fonts.uiMedium,
     fontSize: 13,
-  },
-  banner: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  bannerText: {
-    fontFamily: Fonts.uiMedium,
-    fontSize: 13,
-    lineHeight: 18,
   },
   actions: {
     flexDirection: 'row',

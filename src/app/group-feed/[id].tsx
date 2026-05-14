@@ -20,6 +20,7 @@ import { useGroup } from '@/hooks/useGroup';
 import { useGroups } from '@/hooks/useGroups';
 import { ApiError, errorMessage } from '@/lib/api';
 import { withAlpha } from '@/lib/colors';
+import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
 
@@ -30,10 +31,21 @@ export default function GroupFeedScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const groupId = id ?? '';
 
+  const { setSlipContext } = useAppState();
   const groupQ = useGroup(groupId);
   const feed = useFeed({ scope: 'global', groupId });
   const mineQ = useGroups({ scope: 'mine' });
   const [joinOpen, setJoinOpen] = useState(false);
+
+  const startPredictForGroup = () => {
+    if (!groupQ.group) return;
+    setSlipContext({
+      kind: 'group',
+      groupId: groupQ.group.id,
+      groupName: groupQ.group.name,
+    });
+    router.push('/(tabs)/matches');
+  };
 
   const onRefresh = async () => {
     await Promise.all([groupQ.refetch(), feed.refetch()]);
@@ -123,6 +135,12 @@ export default function GroupFeedScreen() {
               <Text style={[styles.emptySub, { color: theme.text3 }]}>
                 BE THE FIRST IN {groupName.toUpperCase()}
               </Text>
+              <Pressable
+                onPress={startPredictForGroup}
+                style={[styles.joinBtn, { backgroundColor: theme.neon }]}
+              >
+                <Text style={styles.joinBtnTxt}>Predict for this group</Text>
+              </Pressable>
             </View>
           )
         }

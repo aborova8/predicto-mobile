@@ -39,7 +39,7 @@ export default function GroupDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { user: me } = useAppState();
+  const { user: me, setSlipContext } = useAppState();
   const groupId = id ?? '';
 
   const groupQ = useGroup(groupId);
@@ -67,22 +67,38 @@ export default function GroupDetailScreen() {
   };
 
   const onLeave = () => {
-    Alert.alert('Leave group?', 'You will need an invite code to rejoin.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Leave',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await groupQ.leave();
-            await mineQ.refetch();
-            router.back();
-          } catch (err) {
-            Alert.alert('Could not leave', errorMessage(err, 'Try again.'));
-          }
+    const isPrivate = groupQ.group?.visibility === 'PRIVATE';
+    Alert.alert(
+      'Leave group?',
+      isPrivate
+        ? 'You will need an invite code to rejoin.'
+        : 'You can rejoin anytime — this group is public.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await groupQ.leave();
+              await mineQ.refetch();
+              router.back();
+            } catch (err) {
+              Alert.alert('Could not leave', errorMessage(err, 'Try again.'));
+            }
+          },
         },
-      },
-    ]);
+      ],
+    );
+  };
+
+  const onJoinPublic = async () => {
+    try {
+      await groupQ.join();
+      await Promise.all([mineQ.refetch(), membersQ.refetch(), leaderboardQ.refetch()]);
+    } catch (err) {
+      Alert.alert('Could not join', errorMessage(err, 'Try again.'));
+    }
   };
 
   // ── Loading / error states ────────────────────────────────────────────────
@@ -123,6 +139,7 @@ export default function GroupDetailScreen() {
 
   const g = groupQ.group;
   const isMember = g.viewerRole !== null;
+  const isPrivate = g.visibility === 'PRIVATE';
   const refreshing =
     (groupQ.loading || membersQ.loading || leaderboardQ.loading || requestsQ.loading) &&
     !!groupQ.group;
@@ -158,35 +175,56 @@ export default function GroupDetailScreen() {
               </View>
               <Text style={[styles.meta, { color: theme.text2 }]}>
                 {g.memberCount.toLocaleString()} MEMBERS
-                {isMember && g.inviteCode ? ` · CODE: ${g.inviteCode}` : ''}
+                {isMember && isPrivate && g.inviteCode ? ` · CODE: ${g.inviteCode}` : ''}
               </Text>
             </View>
           </View>
           {g.description ? (
             <Text style={[styles.desc, { color: theme.text2 }]}>{g.description}</Text>
           ) : null}
+          {isMember ? (
+            <Pressable
+              onPress={() => {
+                setSlipContext({ kind: 'group', groupId: g.id, groupName: g.name });
+                router.push('/(tabs)/matches');
+              }}
+              style={[styles.predictBtn, { backgroundColor: theme.neon }]}
+            >
+              <Text style={styles.actionPrimTxt}>Predict for this group →</Text>
+            </Pressable>
+          ) : null}
           <View style={styles.actionRow}>
             {isMember ? (
               <>
                 <Pressable
-                  onPress={() => setSheet('invite')}
-                  style={[styles.actionPrim, { backgroundColor: theme.neon }]}
-                >
-                  <Text style={styles.actionPrimTxt}>Invite</Text>
-                </Pressable>
-                <Pressable
                   onPress={() => router.push(`/group-feed/${g.id}`)}
-                  style={[styles.actionSec, { borderColor: theme.line }]}
+                  style={[styles.actionPrim, { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line }]}
                 >
-                  <Text style={[styles.actionSecTxt, { color: theme.text }]}>Group feed</Text>
+                  <Text style={[styles.actionPrimTxt, { color: theme.text }]}>Group feed</Text>
                 </Pressable>
+                {/* Invite is private-group-only: public groups are discoverable, no code to share. */}
+                {isPrivate ? (
+                  <Pressable
+                    onPress={() => setSheet('invite')}
+                    style={[styles.actionSec, { borderColor: theme.line }]}
+                  >
+                    <Text style={[styles.actionSecTxt, { color: theme.text }]}>Invite</Text>
+                  </Pressable>
+                ) : null}
               </>
-            ) : (
+            ) : isPrivate ? (
               <Pressable
                 onPress={() => setSheet('join')}
                 style={[styles.actionPrim, { backgroundColor: theme.neon, flex: 1 }]}
               >
                 <Text style={styles.actionPrimTxt}>Join with invite code</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={onJoinPublic}
+                style={[styles.actionPrim, { backgroundColor: theme.neon, flex: 1 }]}
+              >
+                <Text style={styles.actionPrimTxt}>Join group</Text>
               </Pressable>
             )}
           </View>
@@ -299,7 +337,7 @@ export default function GroupDetailScreen() {
         }}
       />
 
-      {isMember && g.inviteCode ? (
+      {isMember && isPrivate && g.inviteCode ? (
         <InviteSheet
           open={sheet === 'invite'}
           onClose={() => setSheet(null)}
@@ -399,10 +437,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  predictBtn: {
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 14,
+  },
   actionRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 14,
+    marginTop: 8,
   },
   actionPrim: {
     flex: 1,

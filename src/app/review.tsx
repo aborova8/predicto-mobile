@@ -1,11 +1,12 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '@/components/atoms/Icon';
 import { NeonButton } from '@/components/atoms/NeonButton';
 import { BottomSheet } from '@/components/sheets/BottomSheet';
 import { Ticket } from '@/components/ticket/Ticket';
+import { useGroups } from '@/hooks/useGroups';
 import { useNow } from '@/hooks/useNow';
 import { withAlpha } from '@/lib/colors';
 import { errorMessage } from '@/lib/api';
@@ -19,9 +20,11 @@ import type { Ticket as TicketModel } from '@/types/domain';
 export default function ReviewScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { picks, setPick, submitTicket } = useAppState();
+  const { picks, setPick, submitTicket, slipContext, setSlipContext } = useAppState();
+  const mineQ = useGroups({ scope: 'mine' });
   const [submitting, setSubmitting] = useState(false);
   const [staleNotice, setStaleNotice] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   // Same 30s tick as MatchesScreen so a match kicking off while the user is
   // here triggers identical auto-removal + banner behaviour.
   const now = useNow(30_000);
@@ -51,6 +54,23 @@ export default function ReviewScreen() {
   const ticket: TicketModel = { id: 'new', status: 'pending', potential, legs };
   const canSubmit = legs.length > 0 && !submitting;
 
+  // A group the user no longer belongs to (kicked, left, deleted) shouldn't
+  // be allowed to stay selected — drop the context back to Global so the
+  // backend doesn't 403 on submit. Dependency keyed on the membership id-set
+  // (not the array reference) so background refetches that return identical
+  // membership don't fire this effect.
+  const membershipKey = mineQ.groups.map((g) => g.id).join(',');
+  useEffect(() => {
+    if (slipContext.kind !== 'group') return;
+    if (mineQ.loading) return;
+    const stillMember = membershipKey.split(',').includes(slipContext.groupId);
+    if (!stillMember) setSlipContext({ kind: 'global' });
+  }, [slipContext, membershipKey, mineQ.loading, setSlipContext]);
+
+  const contextLabel =
+    slipContext.kind === 'group' ? slipContext.groupName : 'Global feed';
+  const hasGroups = mineQ.groups.length > 0;
+
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
@@ -78,6 +98,74 @@ export default function ReviewScreen() {
             <Text style={[styles.staleBannerText, { color: theme.text }]} numberOfLines={2}>
               {staleNotice}
             </Text>
+          </View>
+        ) : null}
+
+        <Pressable
+          onPress={() => hasGroups && setPickerOpen((v) => !v)}
+          disabled={!hasGroups}
+          style={[
+            styles.contextRow,
+            { backgroundColor: theme.surface, borderColor: theme.line },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.contextLabel, { color: theme.text3 }]}>SUBMITTING TO</Text>
+            <Text style={[styles.contextValue, { color: theme.text }]} numberOfLines={1}>
+              {contextLabel}
+            </Text>
+          </View>
+          {hasGroups ? (
+            <View style={{ transform: [{ rotate: pickerOpen ? '90deg' : '0deg' }] }}>
+              <Icon name="chevron" size={16} color={theme.text3} />
+            </View>
+          ) : null}
+        </Pressable>
+
+        {pickerOpen && hasGroups ? (
+          <View
+            style={[
+              styles.pickerPanel,
+              { backgroundColor: theme.surface, borderColor: theme.line },
+            ]}
+          >
+            <Pressable
+              onPress={() => {
+                setSlipContext({ kind: 'global' });
+                setPickerOpen(false);
+              }}
+              style={[styles.pickerRow, { borderBottomColor: theme.lineSoft }]}
+            >
+              <Text style={[styles.pickerRowLabel, { color: theme.text }]}>Global feed</Text>
+              {slipContext.kind === 'global' ? (
+                <View style={[styles.dot, { backgroundColor: theme.neon }]} />
+              ) : null}
+            </Pressable>
+            {mineQ.groups.map((g, i) => {
+              const selected =
+                slipContext.kind === 'group' && slipContext.groupId === g.id;
+              const isLast = i === mineQ.groups.length - 1;
+              return (
+                <Pressable
+                  key={g.id}
+                  onPress={() => {
+                    setSlipContext({ kind: 'group', groupId: g.id, groupName: g.name });
+                    setPickerOpen(false);
+                  }}
+                  style={[
+                    styles.pickerRow,
+                    { borderBottomColor: isLast ? 'transparent' : theme.lineSoft },
+                  ]}
+                >
+                  <Text style={[styles.pickerRowLabel, { color: theme.text }]} numberOfLines={1}>
+                    {g.name}
+                  </Text>
+                  {selected ? (
+                    <View style={[styles.dot, { backgroundColor: theme.neon }]} />
+                  ) : null}
+                </Pressable>
+              );
+            })}
           </View>
         ) : null}
 
@@ -207,6 +295,48 @@ const styles = StyleSheet.create({
   staleBannerText: {
     fontFamily: Fonts.uiRegular,
     fontSize: 12,
+  },
+  contextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  contextLabel: {
+    fontFamily: Fonts.monoBold,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    marginBottom: 2,
+  },
+  contextValue: {
+    fontFamily: Fonts.dispBold,
+    fontSize: 15,
+  },
+  pickerPanel: {
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  pickerRowLabel: {
+    flex: 1,
+    fontFamily: Fonts.uiMedium,
+    fontSize: 14,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   emptyState: {
     paddingVertical: 28,
