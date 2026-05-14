@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useStaleRefetch } from '@/hooks/useStaleRefetch';
 import {
   likePost as likePostApi,
   listFeed,
@@ -41,7 +42,7 @@ export function useFeed({ scope, groupId }: UseFeedOptions): UseFeedResult {
   const postsRef = useRef<Post[]>([]);
   postsRef.current = posts;
 
-  const refetch = useCallback(async () => {
+  const baseRefetch = useCallback(async () => {
     const reqId = ++reqRef.current;
     setLoading(true);
     setError(null);
@@ -59,6 +60,12 @@ export function useFeed({ scope, groupId }: UseFeedOptions): UseFeedResult {
       if (reqRef.current === reqId) setLoading(false);
     }
   }, [scope, groupId]);
+
+  // Stamps freshness on every successful run AND auto-refetches on app
+  // foreground / login (via the data-epoch bump). Pull-to-refresh and the
+  // screen's slip-submit focus refetch go through this so the stamp stays
+  // accurate.
+  const { refetch } = useStaleRefetch(baseRefetch);
 
   const fetchMore = useCallback(async () => {
     if (!hasMore || loadingMore || !cursor) return;

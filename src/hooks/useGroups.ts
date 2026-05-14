@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useStaleRefetch } from '@/hooks/useStaleRefetch';
 import {
   joinGroupByCode as joinByCodeApi,
   listGroups,
@@ -34,7 +35,7 @@ export function useGroups({ scope }: { scope: GroupScope }): UseGroupsResult {
   const refreshReqRef = useRef(0);
   const fetchMoreReqRef = useRef(0);
 
-  const refetch = useCallback(async () => {
+  const baseRefetch = useCallback(async () => {
     const reqId = ++refreshReqRef.current;
     setLoading(true);
     setError(null);
@@ -51,6 +52,9 @@ export function useGroups({ scope }: { scope: GroupScope }): UseGroupsResult {
       if (refreshReqRef.current === reqId) setLoading(false);
     }
   }, [scope]);
+
+  // Stamps freshness and adds foreground/login auto-refetch via the data epoch.
+  const { refetch } = useStaleRefetch(baseRefetch);
 
   const fetchMore = useCallback(async () => {
     if (!hasMore || loadingMore || loading) return;

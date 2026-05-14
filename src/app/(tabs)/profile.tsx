@@ -26,6 +26,7 @@ import { SectionHeader } from '@/components/atoms/SectionHeader';
 import { PostActionSheet } from '@/components/sheets/PostActionSheet';
 import { Ticket } from '@/components/ticket/Ticket';
 import { useSavedPosts } from '@/hooks/useSavedPosts';
+import { useStaleRefetch } from '@/hooks/useStaleRefetch';
 import { ApiError, errorMessage } from '@/lib/api';
 import { getAllBadges, getMyBadges } from '@/lib/api/badges';
 import { getMyProfile, getMyTickets, updateMyProfileMultipart } from '@/lib/api/users';
@@ -132,7 +133,7 @@ export default function ProfileScreen() {
     }
   }
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     setError(null);
     try {
       const [{ profile: p }, tx, allB, myB] = await Promise.all([
@@ -150,7 +151,12 @@ export default function ProfileScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Failed to load profile'));
     }
-  }
+  }, []);
+
+  // Auto-refetch tickets/badges/profile on app foreground and on a fresh login
+  // (both bump the data epoch). Stamps freshness so rapid tab toggles don't
+  // re-hammer the API.
+  const { refetch: staleLoadAll } = useStaleRefetch(loadAll);
 
   // Append the next page of tickets when the user scrolls near the bottom.
   // `total` from the backend lets us short-circuit once everything is loaded
@@ -192,14 +198,17 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     void (async () => {
-      await loadAll();
+      await staleLoadAll();
       setLoading(false);
     })();
+    // staleLoadAll is referentially stable enough for an initial-mount fire;
+    // foreground/login refetches are handled inside useStaleRefetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function onRefresh() {
     setRefreshing(true);
-    await loadAll();
+    await staleLoadAll();
     setRefreshing(false);
   }
 

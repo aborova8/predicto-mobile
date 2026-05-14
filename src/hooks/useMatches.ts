@@ -39,7 +39,6 @@ export function useMatches(): UseMatchesResult {
       const { items } = await listMatches({
         from: now,
         to: new Date(now.getTime() + SEVEN_DAYS_MS),
-        limit: 200,
       });
       if (reqRef.current !== reqId) return;
       const mapped = items.map((m) => matchToFixture(m, now));

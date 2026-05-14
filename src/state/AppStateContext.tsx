@@ -380,8 +380,15 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     async (response: authApi.AuthResponse) => {
       await authStorage.setSession(response);
       applySession(response);
+      // Fresh sign-in / sign-up / social login / revoke-others. Bump the
+      // data epoch so every useStaleRefetch consumer (feed, groups, tickets,
+      // etc.) refetches against the new identity — without this, the prior
+      // user's cached lists could linger on screens that mounted earlier.
+      // Persisted-session hydration goes straight through applySession on
+      // cold start (not via this funnel), so we don't double-fire on launch.
+      bumpDataEpoch();
     },
-    [applySession],
+    [applySession, bumpDataEpoch],
   );
 
   const signIn = useCallback(
