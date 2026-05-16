@@ -45,6 +45,10 @@ export function unsavePost(postId: string): Promise<{ ok: true }> {
   return api.delete<{ ok: true }>(`/api/feed/posts/${encodeURIComponent(postId)}/save`);
 }
 
+export function deletePost(postId: string): Promise<void> {
+  return api.delete<void>(`/api/feed/posts/${encodeURIComponent(postId)}`);
+}
+
 export type ListSavedFeedQuery = {
   cursor?: string;
   limit?: number;

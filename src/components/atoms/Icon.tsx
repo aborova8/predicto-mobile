@@ -25,7 +25,9 @@ export type IconName =
   | 'google'
   | 'eye'
   | 'add-friend'
-  | 'check-friend';
+  | 'check-friend'
+  | 'trash'
+  | 'flag';
 
 interface IconProps {
   name: IconName;
@@ -213,6 +215,18 @@ export function Icon({ name, size = 22, color = '#ffffff', stroke = 1.7 }: IconP
           <Circle cx="9" cy="9" r="3.5" />
           <Path d="M2 20c0-3.5 3-6 7-6 1.5 0 2.9.4 4 1" />
           <Path d="M16 18l2 2 4-4" />
+        </Svg>
+      );
+    case 'trash':
+      return (
+        <Svg {...props}>
+          <Path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13M10 11v7M14 11v7" />
+        </Svg>
+      );
+    case 'flag':
+      return (
+        <Svg {...props}>
+          <Path d="M5 21V4M5 4h12l-2 4 2 4H5" />
         </Svg>
       );
     default:

@@ -35,6 +35,7 @@ import {
   purchaseInputFrom,
   type BackendProduct,
 } from '@/lib/api/iap';
+import { PRIVACY_URL, TERMS_URL } from '@/data/legal';
 import { Fonts } from '@/theme/fonts';
 import { useTheme } from '@/theme/ThemeContext';
 
@@ -279,6 +280,20 @@ export default function PaywallScreen() {
         </ScrollView>
 
         <View style={{ marginTop: 16 }}>
+          <Text style={[styles.terms, { color: theme.text3 }]}>
+            Subscriptions auto-renew until cancelled. Manage or cancel in your{' '}
+            {Platform.OS === 'ios' ? 'App Store' : 'Google Play'} account settings at any time.
+            One-time purchases (Lives) are non-refundable.
+          </Text>
+          <View style={styles.termsLinks}>
+            <Pressable onPress={() => void Linking.openURL(TERMS_URL)}>
+              <Text style={[styles.termsLink, { color: theme.text2 }]}>Terms of Service</Text>
+            </Pressable>
+            <Text style={[styles.termsDot, { color: theme.text3 }]}>·</Text>
+            <Pressable onPress={() => void Linking.openURL(PRIVACY_URL)}>
+              <Text style={[styles.termsLink, { color: theme.text2 }]}>Privacy Policy</Text>
+            </Pressable>
+          </View>
           <NeonButton onPress={onBuy}>{purchasing ? 'Processing…' : 'Buy now →'}</NeonButton>
         </View>
 
@@ -454,6 +469,30 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.4,
     marginTop: 10,
+  },
+  terms: {
+    fontFamily: Fonts.uiRegular,
+    fontSize: 11,
+    lineHeight: 16,
+    textAlign: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 8,
+  },
+  termsLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  termsLink: {
+    fontFamily: Fonts.dispBold,
+    fontSize: 12,
+    textDecorationLine: 'underline',
+  },
+  termsDot: {
+    fontFamily: Fonts.uiRegular,
+    fontSize: 12,
   },
   banner: {
     paddingVertical: 10,

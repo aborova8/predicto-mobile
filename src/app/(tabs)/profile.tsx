@@ -507,6 +507,7 @@ export default function ProfileScreen() {
       post={menuPost}
       onClose={() => setMenuPost(null)}
       onToggleSave={savedQ.toggleSave}
+      onDeleted={() => void savedQ.refetch()}
     />
     </>
   );

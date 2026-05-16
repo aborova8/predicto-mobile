@@ -1,3 +1,9 @@
+// Hosted ToS and Privacy Policy URLs. Surfaced from the paywall (Apple rule
+// 3.1.2.a) and any future sign-up / purchase flow that needs the boilerplate
+// next to a CTA. Update once the actual pages are live.
+export const TERMS_URL = 'https://predicto.app/terms';
+export const PRIVACY_URL = 'https://predicto.app/privacy';
+
 export interface LegalSection {
   h: string;
   body: string[];

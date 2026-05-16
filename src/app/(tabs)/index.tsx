@@ -173,6 +173,7 @@ export default function FeedScreen() {
         post={menuPost}
         onClose={() => setMenuPost(null)}
         onToggleSave={toggleSave}
+        onDeleted={() => void refetch()}
       />
     </View>
   );

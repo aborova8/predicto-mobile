@@ -1,5 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +15,7 @@ import { Avatar } from '@/components/atoms/Avatar';
 import { Icon } from '@/components/atoms/Icon';
 import { Pill } from '@/components/atoms/Pill';
 import { BottomSheet } from '@/components/sheets/BottomSheet';
+import { ReportReasonSheet } from '@/components/sheets/ReportReasonSheet';
 import { Ticket } from '@/components/ticket/Ticket';
 import { useFriends } from '@/hooks/useFriends';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -39,6 +41,7 @@ export default function UserSheetScreen() {
     block,
   } = useFriends();
 
+  const [reportOpen, setReportOpen] = useState(false);
   const isMe = me?.id === id;
   const friendUser = friends.find((f) => f.id === id);
   const pendingOut = outgoing.find((r) => r.addresseeId === id);
@@ -179,6 +182,13 @@ export default function UserSheetScreen() {
                   >
                     <Text style={[styles.actSecTxt, { color: theme.text }]}>Block</Text>
                   </Pressable>
+                  <Pressable
+                    onPress={() => setReportOpen(true)}
+                    style={[styles.actSec, { borderColor: theme.line }]}
+                  >
+                    <Icon name="flag" size={14} stroke={2.4} color={theme.text} />
+                    <Text style={[styles.actSecTxt, { color: theme.text }]}>Report</Text>
+                  </Pressable>
                 </View>
               ) : null}
             </LinearGradient>
@@ -247,6 +257,12 @@ export default function UserSheetScreen() {
           </>
         ) : null}
       </ScrollView>
+      <ReportReasonSheet
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        targetUserId={profile?.id ?? ''}
+        postId={null}
+      />
     </BottomSheet>
   );
 }

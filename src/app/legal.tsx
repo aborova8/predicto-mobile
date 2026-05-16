@@ -25,19 +25,6 @@ export default function LegalScreen() {
             ))}
           </View>
         ))}
-        <View
-          style={[
-            styles.footnote,
-            { backgroundColor: theme.surface, borderColor: theme.line },
-          ]}
-        >
-          <Text style={[styles.footnoteTxt, { color: theme.text3 }]}>
-            THIS IS A SUMMARY DOCUMENT FOR DEMO PURPOSES.
-          </Text>
-          <Text style={[styles.footnoteTxt, { color: theme.text3 }]}>
-            PRODUCTION COPY SHOULD BE REVIEWED BY LEGAL COUNSEL.
-          </Text>
-        </View>
       </ScrollView>
     </View>
   );
@@ -72,18 +59,5 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     lineHeight: 21,
     marginBottom: 8,
-  },
-  footnote: {
-    marginTop: 24,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  footnoteTxt: {
-    fontFamily: Fonts.monoMedium,
-    fontSize: 11,
-    letterSpacing: 0.4,
-    lineHeight: 18,
   },
 });
