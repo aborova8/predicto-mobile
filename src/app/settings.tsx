@@ -20,8 +20,13 @@ import { useFriends } from '@/hooks/useFriends';
 import { useSettings } from '@/hooks/useSettings';
 import * as Clipboard from 'expo-clipboard';
 
-import { ApiError } from '@/lib/api';
-import { deleteAccount, exportMyData } from '@/lib/api/users';
+import { ApiError, errorMessage } from '@/lib/api';
+import {
+  deleteAccount,
+  exportMyData,
+  type NotificationPrefs,
+  type UserPrivacy,
+} from '@/lib/api/users';
 import { useAppState } from '@/state/AppStateContext';
 import { Fonts } from '@/theme/fonts';
 import { useTheme, useThemeCtx } from '@/theme/ThemeContext';
@@ -48,6 +53,22 @@ export default function SettingsScreen() {
   const { friends } = useFriends();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  const onPrivacyChange = async (patch: Partial<UserPrivacy>) => {
+    try {
+      await updatePrivacy(patch);
+    } catch (err) {
+      Alert.alert('Update failed', errorMessage(err, "Couldn't save your privacy setting."));
+    }
+  };
+
+  const onNotifChange = async (patch: Partial<NotificationPrefs>) => {
+    try {
+      await updateNotificationPrefs(patch);
+    } catch (err) {
+      Alert.alert('Update failed', errorMessage(err, "Couldn't save your notification setting."));
+    }
+  };
 
   const onExportData = async () => {
     if (exporting) return;
@@ -137,21 +158,21 @@ export default function SettingsScreen() {
             icon="eye"
             label="Public profile"
             value={settings?.privacy?.profilePublic ?? true}
-            onChange={(v) => void updatePrivacy({ profilePublic: v })}
+            onChange={(v) => void onPrivacyChange({ profilePublic: v })}
           />
           <ToggleItem
             icon="trophy"
             label="Show on leaderboard"
             divided
             value={settings?.privacy?.showOnLeaderboard ?? true}
-            onChange={(v) => void updatePrivacy({ showOnLeaderboard: v })}
+            onChange={(v) => void onPrivacyChange({ showOnLeaderboard: v })}
           />
           <ToggleItem
             icon="add-friend"
             label="Allow friend requests"
             divided
             value={settings?.privacy?.allowFriendRequests ?? true}
-            onChange={(v) => void updatePrivacy({ allowFriendRequests: v })}
+            onChange={(v) => void onPrivacyChange({ allowFriendRequests: v })}
           />
         </Card>
 
@@ -161,42 +182,42 @@ export default function SettingsScreen() {
             icon="heart"
             label="Likes"
             value={settings?.notifications?.pushLikes ?? true}
-            onChange={(v) => void updateNotificationPrefs({ pushLikes: v })}
+            onChange={(v) => void onNotifChange({ pushLikes: v })}
           />
           <ToggleItem
             icon="comment"
             label="Comments"
             divided
             value={settings?.notifications?.pushComments ?? true}
-            onChange={(v) => void updateNotificationPrefs({ pushComments: v })}
+            onChange={(v) => void onNotifChange({ pushComments: v })}
           />
           <ToggleItem
             icon="add-friend"
             label="Friend requests"
             divided
             value={settings?.notifications?.pushFriendReqs ?? true}
-            onChange={(v) => void updateNotificationPrefs({ pushFriendReqs: v })}
+            onChange={(v) => void onNotifChange({ pushFriendReqs: v })}
           />
           <ToggleItem
             icon="trophy"
             label="Ticket results"
             divided
             value={settings?.notifications?.pushResults ?? true}
-            onChange={(v) => void updateNotificationPrefs({ pushResults: v })}
+            onChange={(v) => void onNotifChange({ pushResults: v })}
           />
           <ToggleItem
             icon="people"
             label="Group invites"
             divided
             value={settings?.notifications?.pushGroupInvites ?? true}
-            onChange={(v) => void updateNotificationPrefs({ pushGroupInvites: v })}
+            onChange={(v) => void onNotifChange({ pushGroupInvites: v })}
           />
           <ToggleItem
             icon="bell"
             label="Email digest"
             divided
             value={settings?.notifications?.emailDigest ?? false}
-            onChange={(v) => void updateNotificationPrefs({ emailDigest: v })}
+            onChange={(v) => void onNotifChange({ emailDigest: v })}
           />
         </Card>
 

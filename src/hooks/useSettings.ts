@@ -31,16 +31,48 @@ export function useSettings(): UseSettingsResult {
 
   const updatePrivacy = useCallback(
     async (patch: Partial<UserPrivacy>) => {
-      const { privacy } = await updatePrivacyApi(patch);
-      setData((prev) => (prev ? { ...prev, privacy } : prev));
+      const rollback: Partial<UserPrivacy> = {};
+      setData((prev) => {
+        if (!prev?.privacy) return prev;
+        for (const key of Object.keys(patch) as (keyof UserPrivacy)[]) {
+          (rollback as Record<string, unknown>)[key] = prev.privacy[key];
+        }
+        return { ...prev, privacy: { ...prev.privacy, ...patch } };
+      });
+      try {
+        const { privacy } = await updatePrivacyApi(patch);
+        setData((prev) => (prev ? { ...prev, privacy } : prev));
+      } catch (err) {
+        setData((prev) =>
+          prev?.privacy ? { ...prev, privacy: { ...prev.privacy, ...rollback } } : prev,
+        );
+        throw err;
+      }
     },
     [setData],
   );
 
   const updateNotificationPrefs = useCallback(
     async (patch: Partial<NotificationPrefs>) => {
-      const { notifications } = await updateNotifApi(patch);
-      setData((prev) => (prev ? { ...prev, notifications } : prev));
+      const rollback: Partial<NotificationPrefs> = {};
+      setData((prev) => {
+        if (!prev?.notifications) return prev;
+        for (const key of Object.keys(patch) as (keyof NotificationPrefs)[]) {
+          (rollback as Record<string, unknown>)[key] = prev.notifications[key];
+        }
+        return { ...prev, notifications: { ...prev.notifications, ...patch } };
+      });
+      try {
+        const { notifications } = await updateNotifApi(patch);
+        setData((prev) => (prev ? { ...prev, notifications } : prev));
+      } catch (err) {
+        setData((prev) =>
+          prev?.notifications
+            ? { ...prev, notifications: { ...prev.notifications, ...rollback } }
+            : prev,
+        );
+        throw err;
+      }
     },
     [setData],
   );
